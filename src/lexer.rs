@@ -1,4 +1,4 @@
-use crate::token::{lookup_ident, Token, KEYWORDS};
+use crate::token::{lookup_ident, Token};
 
 pub struct Lexer<'a> {
     input: &'a str,
@@ -30,11 +30,17 @@ impl<'a> Lexer<'a> {
 
         let tok = match self.index_char {
             Some(_i_ch @ (_, '=')) => Token::Assign,
+            Some(_i_ch @ (_, '+')) => Token::Plus,
+            Some(_i_ch @ (_, '-')) => Token::Minus,
+            Some(_i_ch @ (_, '!')) => Token::Bang,
+            Some(_i_ch @ (_, '/')) => Token::Slash,
+            Some(_i_ch @ (_, '*')) => Token::Asterisk,
+            Some(_i_ch @ (_, '<')) => Token::Lt,
+            Some(_i_ch @ (_, '>')) => Token::Gt,
             Some(_i_ch @ (_, ';')) => Token::Semicolon,
+            Some(_i_ch @ (_, ',')) => Token::Comma,
             Some(_i_ch @ (_, '(')) => Token::LParen,
             Some(_i_ch @ (_, ')')) => Token::RParen,
-            Some(_i_ch @ (_, ',')) => Token::Comma,
-            Some(_i_ch @ (_, '+')) => Token::Plus,
             Some(_i_ch @ (_, '{')) => Token::LBrace,
             Some(_i_ch @ (_, '}')) => Token::RBrace,
 
@@ -114,6 +120,8 @@ let add = fn(x, y) {
 };
 
 let result = add(five, ten);
+!-/*5;
+5 < 10 > 5;
 "#;
 
         let tests = [
@@ -152,6 +160,18 @@ let result = add(five, ten);
             Token::Comma,
             Token::Ident(String::from("ten")),
             Token::RParen,
+            Token::Semicolon,
+            Token::Bang,
+            Token::Minus,
+            Token::Slash,
+            Token::Asterisk,
+            Token::Int(5),
+            Token::Semicolon,
+            Token::Int(5),
+            Token::Lt,
+            Token::Int(10),
+            Token::Gt,
+            Token::Int(5),
             Token::Semicolon,
             Token::EOF,
         ];
