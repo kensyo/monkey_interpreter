@@ -3,9 +3,9 @@ use std::iter::Peekable;
 use crate::token::{lookup_ident, Token};
 
 pub struct Lexer<'a> {
-    input: &'a str,
+    input: &'a str, // 特にいらないが一応持っておく
     position: Peekable<std::str::CharIndices<'a>>, // １文字先読みできるイテレータ。複数先読みしたいなら itertools を使う
-    index_char: Option<(usize, char)>,
+    index_char: Option<(usize, char)>, // これも実装次第で input 同様持たなくて済みそうだが、持っておいたほうが便利そうであるので、本に合わせてフィールドとして持っておく
 }
 
 impl<'a> Lexer<'a> {
