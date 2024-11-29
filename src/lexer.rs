@@ -1,28 +1,27 @@
+use std::iter::Peekable;
+
 use crate::token::{lookup_ident, Token};
 
 pub struct Lexer<'a> {
     input: &'a str,
-    position: std::str::CharIndices<'a>,
-    read_position: std::str::CharIndices<'a>,
+    position: Peekable<std::str::CharIndices<'a>>, // １文字先読みできるイテレータ。複数先読みしたいなら itertools を使う
     index_char: Option<(usize, char)>,
 }
 
 impl<'a> Lexer<'a> {
     pub fn new(input: &'a str) -> Self {
-        let mut read_position = input.char_indices();
-        let index_char = read_position.next();
+        let mut position = input.char_indices().peekable();
+        let index_char = position.next();
 
         Lexer {
             input,
-            position: input.char_indices(),
-            read_position, // 今回は二つ以上の先読みはしないっぽいので、一つの peekable イテレータがあれば多分間に合うが、本に合わせる
+            position,
             index_char,
         }
     }
 
     fn read_char(&mut self) {
-        self.index_char = self.read_position.next();
-        self.position.next();
+        self.index_char = self.position.next();
     }
 
     pub fn next_token(&mut self) -> Token {
@@ -102,7 +101,7 @@ impl<'a> Lexer<'a> {
     }
 
     fn is_digit(ch: char) -> bool {
-        ch.is_ascii_digit() 
+        ch.is_ascii_digit()
     }
 }
 
