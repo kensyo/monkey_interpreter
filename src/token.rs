@@ -8,12 +8,12 @@ pub enum Token {
     Int(usize),
 
     // 演算子
-    Assign, // =
-    Plus,   // +
-    Minus,  // -
-    Bang,   // !
+    Assign,   // =
+    Plus,     // +
+    Minus,    // -
+    Bang,     // !
     Asterisk, // *
-    Slash, // /
+    Slash,    // /
 
     Lt, // <
     Gt, // >
@@ -30,9 +30,22 @@ pub enum Token {
     // キーワード
     Function,
     Let,
+    True,
+    False,
+    If,
+    Else,
+    Return,
 }
 
-pub const KEYWORDS: &[(&str, Token)] = &[("fn", Token::Function), ("let", Token::Let)];
+pub const KEYWORDS: &[(&str, Token)] = &[
+    ("fn", Token::Function),
+    ("let", Token::Let),
+    ("true", Token::True),
+    ("false", Token::False),
+    ("if", Token::If),
+    ("else", Token::Else),
+    ("return", Token::Return),
+];
 
 pub fn lookup_ident(s: String) -> Token {
     for &(key, ref value) in KEYWORDS.iter() {

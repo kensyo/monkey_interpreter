@@ -122,7 +122,12 @@ let add = fn(x, y) {
 let result = add(five, ten);
 !-/*5;
 5 < 10 > 5;
-"#;
+
+if (5 < 10) {
+  return true;
+} else {
+  return false;
+}"#;
 
         let tests = [
             Token::Let,
@@ -173,6 +178,23 @@ let result = add(five, ten);
             Token::Gt,
             Token::Int(5),
             Token::Semicolon,
+            Token::If,
+            Token::LParen,
+            Token::Int(5),
+            Token::Lt,
+            Token::Int(10),
+            Token::RParen,
+            Token::LBrace,
+            Token::Return,
+            Token::True,
+            Token::Semicolon,
+            Token::RBrace,
+            Token::Else,
+            Token::LBrace,
+            Token::Return,
+            Token::False,
+            Token::Semicolon,
+            Token::RBrace,
             Token::EOF,
         ];
 
