@@ -28,10 +28,24 @@ impl<'a> Lexer<'a> {
         self.skip_whitespace();
 
         let tok = match self.index_char {
-            Some(_i_ch @ (_, '=')) => Token::Assign,
+            Some(_i_ch @ (_, '=')) => {
+                if let Some(_i_ch @ (_, '=')) = self.peek_char() {
+                    self.read_char();
+                    Token::Eq
+                } else {
+                    Token::Assign
+                }
+            }
             Some(_i_ch @ (_, '+')) => Token::Plus,
             Some(_i_ch @ (_, '-')) => Token::Minus,
-            Some(_i_ch @ (_, '!')) => Token::Bang,
+            Some(_i_ch @ (_, '!')) => {
+                if let Some(_i_ch @ (_, '=')) = self.peek_char() {
+                    self.read_char();
+                    Token::NotEq
+                } else {
+                    Token::Bang
+                }
+            }
             Some(_i_ch @ (_, '/')) => Token::Slash,
             Some(_i_ch @ (_, '*')) => Token::Asterisk,
             Some(_i_ch @ (_, '<')) => Token::Lt,
@@ -103,6 +117,10 @@ impl<'a> Lexer<'a> {
     fn is_digit(ch: char) -> bool {
         ch.is_ascii_digit()
     }
+
+    fn peek_char(&mut self) -> Option<&(usize, char)> {
+        self.position.peek()
+    }
 }
 
 #[cfg(test)]
@@ -126,7 +144,11 @@ if (5 < 10) {
   return true;
 } else {
   return false;
-}"#;
+}
+
+10 == 10;
+10 != 9;
+"#;
 
         let tests = [
             Token::Let,
@@ -194,6 +216,14 @@ if (5 < 10) {
             Token::False,
             Token::Semicolon,
             Token::RBrace,
+            Token::Int(10),
+            Token::Eq,
+            Token::Int(10),
+            Token::Semicolon,
+            Token::Int(10),
+            Token::NotEq,
+            Token::Int(9),
+            Token::Semicolon,
             Token::EOF,
         ];
 

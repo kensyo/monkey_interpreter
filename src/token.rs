@@ -18,14 +18,17 @@ pub enum Token {
     Lt, // <
     Gt, // >
 
+    Eq,    // ==
+    NotEq, // !=
+
     // デリミタ
     Comma,
     Semicolon,
 
-    LParen,
-    RParen,
-    LBrace,
-    RBrace,
+    LParen, // (
+    RParen, // )
+    LBrace, // {
+    RBrace, // }
 
     // キーワード
     Function,
