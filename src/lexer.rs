@@ -1,4 +1,4 @@
-use crate::token::{self, Token};
+use crate::token::{lookup_ident, Token, KEYWORDS};
 
 pub struct Lexer<'a> {
     input: &'a str,
@@ -26,17 +26,27 @@ impl<'a> Lexer<'a> {
     }
 
     pub fn next_token(&mut self) -> Token {
-        let tok = match self.index_char {
-            Some(_index_ch @ (_, '=')) => Token::Assign,
-            Some(_index_ch @ (_, ';')) => Token::Semicolon,
-            Some(_index_ch @ (_, '(')) => Token::LParen,
-            Some(_index_ch @ (_, ')')) => Token::RParen,
-            Some(_index_ch @ (_, ',')) => Token::Comma,
-            Some(_index_ch @ (_, '+')) => Token::Plus,
-            Some(_index_ch @ (_, '{')) => Token::LBrace,
-            Some(_index_ch @ (_, '}')) => Token::RBrace,
+        self.skip_whitespace();
 
-            Some(_index_ch) => Token::Illegal,
+        let tok = match self.index_char {
+            Some(_i_ch @ (_, '=')) => Token::Assign,
+            Some(_i_ch @ (_, ';')) => Token::Semicolon,
+            Some(_i_ch @ (_, '(')) => Token::LParen,
+            Some(_i_ch @ (_, ')')) => Token::RParen,
+            Some(_i_ch @ (_, ',')) => Token::Comma,
+            Some(_i_ch @ (_, '+')) => Token::Plus,
+            Some(_i_ch @ (_, '{')) => Token::LBrace,
+            Some(_i_ch @ (_, '}')) => Token::RBrace,
+
+            Some((_, ch)) => {
+                if Lexer::is_letter(ch) {
+                    return self.read_identifier();
+                } else if Lexer::is_digit(ch) {
+                    return self.read_number();
+                } else {
+                    Token::Illegal
+                }
+            }
 
             None => Token::EOF,
         };
@@ -44,26 +54,104 @@ impl<'a> Lexer<'a> {
         self.read_char();
         tok
     }
+
+    pub fn read_identifier(&mut self) -> Token {
+        let mut identifier = String::new();
+        while let Some((_, ch)) = self.index_char {
+            if !Lexer::is_letter(ch) {
+                break;
+            }
+            identifier.push(ch);
+            self.read_char();
+        }
+
+        lookup_ident(identifier)
+    }
+
+    fn is_letter(ch: char) -> bool {
+        ch.is_ascii_alphabetic() || ch == '_'
+    }
+
+    fn skip_whitespace(&mut self) {
+        while let Some((_, ch)) = self.index_char {
+            if [' ', '\t', '\n', '\r'].contains(&ch) {
+                self.read_char();
+            } else {
+                break;
+            }
+        }
+    }
+
+    pub fn read_number(&mut self) -> Token {
+        let mut number_string = String::new();
+        while let Some((_, ch)) = self.index_char {
+            if !Lexer::is_digit(ch) {
+                break;
+            }
+            number_string.push(ch);
+            self.read_char();
+        }
+
+        Token::Int(number_string.parse::<usize>().unwrap())
+    }
+
+    fn is_digit(ch: char) -> bool {
+        ch.is_ascii_digit() 
+    }
 }
 
 #[cfg(test)]
 mod tests {
-    use self::token::Token;
-
     use super::*;
 
     #[test]
     fn test_next_token() {
-        let input = r#"=+(){},;"#;
+        let input = r#"let five = 5;
+let ten = 10;
+
+let add = fn(x, y) {
+  x + y;
+};
+
+let result = add(five, ten);
+"#;
 
         let tests = [
+            Token::Let,
+            Token::Ident(String::from("five")),
             Token::Assign,
-            Token::Plus,
+            Token::Int(5),
+            Token::Semicolon,
+            Token::Let,
+            Token::Ident(String::from("ten")),
+            Token::Assign,
+            Token::Int(10),
+            Token::Semicolon,
+            Token::Let,
+            Token::Ident(String::from("add")),
+            Token::Assign,
+            Token::Function,
             Token::LParen,
+            Token::Ident(String::from("x")),
+            Token::Comma,
+            Token::Ident(String::from("y")),
             Token::RParen,
             Token::LBrace,
+            Token::Ident(String::from("x")),
+            Token::Plus,
+            Token::Ident(String::from("y")),
+            Token::Semicolon,
             Token::RBrace,
+            Token::Semicolon,
+            Token::Let,
+            Token::Ident(String::from("result")),
+            Token::Assign,
+            Token::Ident(String::from("add")),
+            Token::LParen,
+            Token::Ident(String::from("five")),
             Token::Comma,
+            Token::Ident(String::from("ten")),
+            Token::RParen,
             Token::Semicolon,
             Token::EOF,
         ];

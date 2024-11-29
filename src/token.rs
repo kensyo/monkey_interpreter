@@ -1,11 +1,11 @@
-#[derive(Debug, PartialEq)]
+#[derive(Debug, Clone, PartialEq)]
 pub enum Token {
     Illegal,
     EOF,
 
     // 識別子 + リテラル
     Ident(String),
-    Int(isize),
+    Int(usize),
 
     // 演算子
     Assign, // =
@@ -23,6 +23,17 @@ pub enum Token {
     // キーワード
     Function,
     Let,
+}
+
+pub const KEYWORDS: &[(&str, Token)] = &[("fn", Token::Function), ("let", Token::Let)];
+
+pub fn lookup_ident(s: String) -> Token {
+    for &(key, ref value) in KEYWORDS.iter() {
+        if s == key {
+            return value.clone();
+        }
+    }
+    Token::Ident(s)
 }
 
 // #[cfg(test)]
