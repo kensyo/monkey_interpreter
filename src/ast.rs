@@ -19,7 +19,7 @@
 //    // <expression> -> ... という Production があるはずなので、それにしたがってここを実装する
 // }
 // struct Ident (String) // タプル構造体。別にフィールド名を与えても良いし、なんなら構造体じゃなくて type Ident = String; としても良いかも
-// 
+//
 // なお
 // X -> A | B { C | D }
 // のような規則で { C | D } の部分については対応する生成規則はないものの
@@ -101,15 +101,15 @@
 //
 // となり、すっきりする。
 // 注意： 仮に[]と<>以外を削除後に、マルチ文のところが
-// <statement> { <statement> | <statement> } 
+// <statement> { <statement> | <statement> }
 // や
-// <statement> { [ident] } 
+// <statement> { [ident] }
 // や
-// <statement> { [ident] {<A> | <B>} (<A> | <C>)} 
+// <statement> { [ident] {<A> | <B>} (<A> | <C>)}
 // や
-// <statement> {  } 
+// <statement> {  }
 // や
-// <statement> { | } 
+// <statement> { | }
 // のようになっていたとしたら
 // enum Statement {
 //     ...
@@ -170,19 +170,13 @@
 // }
 // のようになる。
 
-
-
-
-
-
-
 // Monkey言語 正規右辺文法
-// <Program> -> { <Statement> } EOF 
-// <Statement> -> let [Ident] = <Expression> ; | return <Expression> ;
+// <Program> -> { <Statement> } EOF
+// <Statement> -> let [Ident] = <Expression> ; | return <Expression> ; | <Expression> ;
 // <Expression> -> [Ident] | [Int]
 //
 
-// <Program> -> { <Statement> } EOF 
+// <Program> -> { <Statement> } EOF
 #[derive(Debug, PartialEq)]
 pub enum Program {
     Program(Vec<Statement>),
@@ -192,14 +186,15 @@ pub enum Program {
 #[derive(Debug, PartialEq)]
 pub enum Statement {
     Let(Ident, Expression),
-    Return(Expression)
+    Return(Expression),
+    Expression(Expression), // 式文
 }
 
 // <Expression> -> [Ident]
 #[derive(Debug, PartialEq)]
 pub enum Expression {
     Ident(Ident),
-    Int(Int)
+    Int(Int),
 }
 
 // 付随する値を持つトークン
@@ -208,3 +203,72 @@ pub struct Ident(pub String);
 
 #[derive(Debug, PartialEq)]
 pub struct Int(pub usize);
+
+use std::fmt;
+
+impl fmt::Display for Program {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Program::Program(statements) => {
+                for stmt in statements {
+                    write!(f, "{}", stmt)?;
+                }
+                Ok(())
+            }
+        }
+    }
+}
+
+impl fmt::Display for Statement {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Statement::Let(ident, expr) => write!(f, "let {} = {};", ident, expr),
+            Statement::Return(expr) => write!(f, "return {};", expr),
+            Statement::Expression(expr) => write!(f, "{};", expr),
+        }
+    }
+}
+
+impl fmt::Display for Expression {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Expression::Ident(ident) => write!(f, "{}", ident),
+            Expression::Int(int) => write!(f, "{}", int),
+        }
+    }
+}
+
+impl fmt::Display for Ident {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{}", self.0)
+    }
+}
+
+impl fmt::Display for Int {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{}", self.0)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::lexer::Lexer;
+    use crate::parser::Parser;
+
+    #[test]
+    // p.54 の TestString テストに相当
+    fn test_display_trait() {
+        let input = r#"
+let myVar = anotherVar;
+"#;
+
+        let mut l = Lexer::new(input);
+        let mut p = Parser::new(&mut l);
+
+        // parse_program がエラーを返していたらパニックして終了
+        let program = p.parse_program().unwrap();
+
+        assert_eq!(program.to_string(), "let myVar = anotherVar;");
+
+    }
+}
