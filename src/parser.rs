@@ -1,6 +1,6 @@
 use core::fmt;
 
-use crate::ast::{Expression, Ident, Program, Statement};
+use crate::ast::{Expression, Ident, Int, Program, Statement};
 use crate::lexer::Lexer;
 use crate::token::Token;
 
@@ -28,139 +28,168 @@ impl<'a> Parser<'a> {
         self.peek_token = self.l.next_token();
     }
 
-    pub fn parse_program(&mut self) -> Result<Program, ParserError> {
-        let mut statements = vec![];
-
+    // <Program> -> { <Statement> } EOF
+    pub fn parse_program(&mut self) -> Result<Program, ParseError> {
         match self.cur_token {
-            // <Program> -> { <Statement> } EOF の Director
-            Token::Let | Token::EOF => {
+            // <Program> -> { <Statement> } ; EOF の Director
+            Token::Let | Token::EOF | Token::Return => {
                 // T({ <Statement> })
-                while self.cur_token == Token::Let {
+                let mut statements = vec![];
+                // <Statement> の First
+                while matches!(self.cur_token, Token::Let | Token::Return) {
                     // T(<Statement>)
                     let statement = self.parse_statement()?;
                     statements.push(statement);
                 }
 
                 // T(EOF)
-                match self.cur_token {
-                    Token::EOF => {
-                        self.next_token();
-                    }
-                    _ => {
-                        return Err(ParserError::new("EOF", self.cur_token.clone()));
-                    }
-                }
+                self.parse_token(Token::EOF)?;
 
                 Ok(Program::Program(statements))
             }
 
-            _ => Err(ParserError::new("<program>", self.cur_token.clone())),
+            _ => Err(ParseError::Symbol {
+                symbol: "<program>".to_string(),
+                current_token: self.cur_token.clone(),
+            }),
         }
     }
 
-    pub fn parse_statement(&mut self) -> Result<Statement, ParserError> {
+    // <Statement> -> let [Ident] = <Expression> ; | return <Expression> ;
+    pub fn parse_statement(&mut self) -> Result<Statement, ParseError> {
         match self.cur_token {
-            // <Statement> -> let [Ident] = <Expression>; の Director
+            // <Statement> -> let [Ident] = <Expression> ; の Director
             Token::Let => {
                 // T(let)
-                match self.cur_token {
-                    Token::Let => {
-                        self.next_token();
-                    }
-                    _ => {
-                        return Err(ParserError::new("let", self.cur_token.clone()));
-                    }
-                }
+                self.parse_token(Token::Let)?;
 
                 // T([ident])
-                let ident = match self.cur_token {
-                    Token::Ident(ref ident) => {
-                        let tmp = ident.clone();
-                        self.next_token();
-                        tmp
-                    }
-                    _ => {
-                        return Err(ParserError::new("[ident]", self.cur_token.clone()));
-                    }
-                };
+                let ident = self.parse_ident_token()?;
 
                 // T(=)
-                match self.cur_token {
-                    Token::Assign => {
-                        self.next_token();
-                    }
-                    _ => {
-                        return Err(ParserError::new("assign", self.cur_token.clone()));
-                    }
-                }
+                self.parse_token(Token::Assign)?;
 
                 // T(<Expression>)
                 let expression = self.parse_expression()?;
 
                 // T(;)
-                match self.cur_token {
-                    Token::Semicolon => {
-                        self.next_token();
-                    }
-                    _ => {
-                        return Err(ParserError::new("semicolon", self.cur_token.clone()));
-                    }
-                }
+                self.parse_token(Token::Semicolon)?;
 
-                Ok(Statement::Let(Ident(ident), expression))
+                Ok(Statement::Let(ident, expression))
             }
 
-            _ => Err(ParserError::new("statement", self.cur_token.clone())),
+            // <Program> -> return <Expression> ; の Director
+            Token::Return => {
+                // T(return)
+                self.parse_token(Token::Return)?;
+
+                // T(<Expression>)
+                let expression = self.parse_expression()?;
+
+                // T(;)
+                self.parse_token(Token::Semicolon)?;
+
+                Ok(Statement::Return(expression))
+            }
+
+            _ => Err(ParseError::Symbol {
+                symbol: "<statement>".to_string(),
+                current_token: self.cur_token.clone(),
+            }),
         }
     }
 
-    pub fn parse_expression(&mut self) -> Result<Expression, ParserError> {
-        // <Expression> -> [Ident]
-        let ident = match self.cur_token {
-            Token::Ident(ref ident) => {
-                let tmp = ident.clone();
-                self.next_token();
-                tmp
+    // <Expression> -> [Ident] | [Int]
+    pub fn parse_expression(&mut self) -> Result<Expression, ParseError> {
+        // <Expression> -> [Ident] | [Int] の Director
+        match self.cur_token {
+            // <Expression> -> [Ident] の Director
+            Token::Ident(_) => {
+                let ident = self.parse_ident_token()?;
+                Ok(Expression::Ident(ident))
             }
-            _ => {
-                return Err(ParserError::new("[ident]", self.cur_token.clone()));
+            // <Expression> -> [Int] の Director
+            Token::Int(_) => {
+                let int = self.parse_int_token()?;
+                Ok(Expression::Int(int))
             }
-        };
 
-        return Ok(Expression::Ident(Ident(ident)));
+            _ => Err(ParseError::Symbol {
+                symbol: "<expression>".to_string(),
+                current_token: self.cur_token.clone(),
+            }),
+        }
+    }
+
+    pub fn parse_token(&mut self, expected_token: Token) -> Result<(), ParseError> {
+        if self.cur_token.is_same_variant(&expected_token) {
+            self.next_token();
+            Ok(())
+        } else {
+            return Err(ParseError::Symbol {
+                symbol: format!("{:?}", expected_token.clone()),
+                current_token: self.cur_token.clone(),
+            });
+        }
+    }
+
+    pub fn parse_ident_token(&mut self) -> Result<Ident, ParseError> {
+        if let Token::Ident(ref val) = self.cur_token {
+            let str = val.clone();
+            self.next_token();
+            Ok(Ident(str))
+        } else {
+            return Err(ParseError::Symbol {
+                symbol: "[ident]".to_string(),
+                current_token: self.cur_token.clone(),
+            });
+        }
+    }
+
+    pub fn parse_int_token(&mut self) -> Result<Int, ParseError> {
+        if let Token::Int(ref val) = self.cur_token {
+            let num = val.clone();
+            self.next_token();
+            Ok(Int(num))
+        } else {
+            return Err(ParseError::Symbol {
+                symbol: "[int]".to_string(),
+                current_token: self.cur_token.clone(),
+            });
+        }
     }
 }
 
 #[derive(Debug)]
-pub struct ParserError {
-    target_symbol: &'static str,
-    current_token: Token,
+pub enum ParseError {
+    Symbol {
+        symbol: String,
+        current_token: Token,
+    },
 }
 
-impl ParserError {
-    pub fn new(target_symbol: &'static str, current_token: Token) -> Self {
-        Self {
-            target_symbol,
-            current_token,
-        }
-    }
-}
-
-impl fmt::Display for ParserError {
+impl fmt::Display for ParseError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(
-            f,
-            "Error: An inconsistency was detected while executing the parsing function for the symbol {:?}. Encountered unexpected token: {:?}.",
-            self.target_symbol,
-            self.current_token
-        )
+        match self {
+            ParseError::Symbol {
+                symbol,
+                current_token,
+            } => {
+                write!(
+                    f,
+                    "Error: An inconsistency was detected while executing the parsing function for the symbol {}. Encountered unexpected token: {:?}.",
+                    symbol,
+                    current_token
+                )
+            }
+        }
     }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::ast::{Expression, Ident, Statement};
+    use crate::ast::{Expression, Ident, Int, Statement};
     use crate::lexer::Lexer;
 
     #[test]
@@ -198,6 +227,37 @@ let foobar = foobar;
                 Ident("foobar".to_string()),
                 Expression::Ident(Ident("foobar".to_string())),
             ),
+        ];
+
+        assert_eq!(actual_statements, expected_statements);
+    }
+
+    #[test]
+    fn test_return_statements() {
+        let input = r#"
+return 5;
+return 10;
+return 993322;
+"#;
+
+        let mut l = Lexer::new(input);
+        let mut p = Parser::new(&mut l);
+
+        // parse_program がエラーを返していたらパニックして終了
+        let program = p.parse_program().unwrap();
+
+        let actual_statements = match program {
+            Program::Program(s_s) => {
+                assert_eq!(s_s.len(), 3);
+                s_s
+            }
+        };
+
+        // Expression は一旦適当
+        let expected_statements = vec![
+            Statement::Return(Expression::Int(Int(5))),
+            Statement::Return(Expression::Int(Int(10))),
+            Statement::Return(Expression::Int(Int(993322))),
         ];
 
         assert_eq!(actual_statements, expected_statements);

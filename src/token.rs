@@ -1,3 +1,5 @@
+use std::mem::discriminant;
+
 #[derive(Debug, Clone, PartialEq)]
 pub enum Token {
     Illegal,
@@ -38,6 +40,12 @@ pub enum Token {
     If,
     Else,
     Return,
+}
+
+impl Token {
+    pub fn is_same_variant(&self, other: &Self) -> bool {
+        discriminant(self) == discriminant(other)
+    }
 }
 
 pub const KEYWORDS: &[(&str, Token)] = &[

@@ -178,13 +178,8 @@
 
 // Monkey言語 正規右辺文法
 // <Program> -> { <Statement> } EOF 
-// <Statement> -> let [Ident] = <Expression>;
-// <Expression> -> [Ident]
-//
-//
-// 
-//
-//
+// <Statement> -> let [Ident] = <Expression> ; | return <Expression> ;
+// <Expression> -> [Ident] | [Int]
 //
 
 // <Program> -> { <Statement> } EOF 
@@ -193,18 +188,23 @@ pub enum Program {
     Program(Vec<Statement>),
 }
 
-// <Statement> -> let [Ident] = <Expression>;
+// <Statement> -> let [Ident] = <Expression> ; | return <Expression> ;
 #[derive(Debug, PartialEq)]
 pub enum Statement {
-    Let(Ident, Expression)
+    Let(Ident, Expression),
+    Return(Expression)
 }
 
 // <Expression> -> [Ident]
 #[derive(Debug, PartialEq)]
 pub enum Expression {
-    Ident(Ident)
+    Ident(Ident),
+    Int(Int)
 }
 
 // 付随する値を持つトークン
 #[derive(Debug, PartialEq)]
 pub struct Ident(pub String);
+
+#[derive(Debug, PartialEq)]
+pub struct Int(pub usize);
