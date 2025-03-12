@@ -182,7 +182,7 @@ pub enum Program {
     Program(Vec<Statement>),
 }
 
-// <Statement> -> let [Ident] = <Expression> ; | return <Expression> ;
+// <Statement> -> let [Ident] = <Expression> ; | return <Expression> ; | <Expression> ;
 #[derive(Debug, PartialEq)]
 pub enum Statement {
     Let(Ident, Expression),
