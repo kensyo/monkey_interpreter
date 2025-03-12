@@ -287,4 +287,43 @@ return 993322;
 
         assert_eq!(actual_statements, expected_statements);
     }
+
+    #[test]
+    // p.56
+    fn test_identifier_expression() {
+        let input = r#"
+foobar;
+"#;
+
+        let mut l = Lexer::new(input);
+        let mut p = Parser::new(&mut l);
+
+        // parse_program がエラーを返していたらパニックして終了
+        let program = p.parse_program().unwrap();
+
+        let statements = match program {
+            Program::Program(s_s) => {
+                assert_eq!(s_s.len(), 1);
+                s_s
+            }
+        };
+
+        let statement = statements.into_iter().next().unwrap();
+
+        let expression = match statement {
+            Statement::Expression(expr) => expr,
+            _ => {
+                panic!("{} is not expression statement", statement);
+            }
+        };
+
+        let ident = match expression {
+            Expression::Ident(ident) => ident,
+            _ => {
+                panic!("{} is not ident expression", expression);
+            }
+        };
+
+        assert_eq!(ident.0, "foobar");
+    }
 }
