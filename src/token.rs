@@ -1,6 +1,6 @@
 use std::mem::discriminant;
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub enum Token {
     Illegal,
     EOF,

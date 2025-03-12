@@ -1,14 +1,21 @@
 use core::fmt;
+use std::collections::HashMap;
 
 use crate::ast::{Expression, Ident, Int, Program, Statement};
 use crate::lexer::Lexer;
 use crate::token::Token;
+
+pub type PrefixParseFn = fn() -> Expression;
+pub type InfixParseFn = fn(Expression) -> Expression;
 
 pub struct Parser<'a> {
     l: &'a mut Lexer<'a>,
 
     cur_token: Token,
     peek_token: Token,
+
+    prefix_parse_fns: HashMap<Token, PrefixParseFn>,
+    infix_parse_fns: HashMap<Token, InfixParseFn>,
 }
 
 impl<'a> Parser<'a> {
@@ -20,12 +27,30 @@ impl<'a> Parser<'a> {
             l,
             cur_token,
             peek_token,
+            prefix_parse_fns: HashMap::new(),
+            infix_parse_fns: HashMap::new(),
         }
     }
 
     fn next_token(&mut self) {
         self.cur_token = self.peek_token.clone();
         self.peek_token = self.l.next_token();
+    }
+
+    pub fn register_prefix(&mut self, token: Token, f: PrefixParseFn) {
+        // upsert
+        self.prefix_parse_fns
+            .entry(token)
+            .and_modify(|v| *v = f)
+            .or_insert(f);
+    }
+
+    pub fn register_infix(&mut self, token: Token, f: InfixParseFn) {
+        // upsert
+        self.infix_parse_fns
+            .entry(token)
+            .and_modify(|v| *v = f)
+            .or_insert(f);
     }
 
     // <Program> -> { <Statement> } EOF
