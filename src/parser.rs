@@ -56,7 +56,7 @@ impl<'a> Parser<'a> {
     // <Program> -> { <Statement> } EOF
     pub fn parse_program(&mut self) -> Result<Program, ParseError> {
         match self.cur_token {
-            // <Program> -> { <Statement> } ; EOF の Director
+            // <Program> -> { <Statement> } EOF の Director
             Token::Let | Token::EOF | Token::Return => {
                 // T({ <Statement> })
                 let mut statements = vec![];

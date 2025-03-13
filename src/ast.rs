@@ -187,7 +187,7 @@ pub enum Program {
 pub enum Statement {
     Let(Ident, Expression),
     Return(Expression),
-    Expression(Expression), // 式文
+    Expression(Expression), // 式文(セミコロンの省略はしないものとする)
 }
 
 // <Expression> -> [Ident]
