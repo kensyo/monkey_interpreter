@@ -173,7 +173,8 @@
 // Monkey言語 正規右辺文法
 // <Program> -> { <Statement> } EOF
 // <Statement> -> let [Ident] = <Expression> ; | return <Expression> ; | <Expression> ;
-// <Expression> -> [Ident] | [Int]
+// <Expression> -> [Ident] | [Int] | <Prefix operator> <Expression>
+// <Prefix operator> -> ! | -
 //
 
 // <Program> -> { <Statement> } EOF
@@ -190,11 +191,19 @@ pub enum Statement {
     Expression(Expression), // 式文(セミコロンの省略はしないものとする)
 }
 
-// <Expression> -> [Ident]
+// <Expression> -> [Ident] | [Int] | <Prefix operator> <Expression>
 #[derive(Debug, PartialEq)]
 pub enum Expression {
     Ident(Ident),
     Int(Int),
+    PrefixExpression(PrefixOperator, Box<Expression>),
+}
+
+// <Prefix operator> -> ! | -
+#[derive(Debug, PartialEq)]
+pub enum PrefixOperator {
+    Bang,
+    Minus,
 }
 
 // 付随する値を持つトークン
@@ -236,6 +245,18 @@ impl fmt::Display for Expression {
         match self {
             Expression::Ident(ident) => write!(f, "{}", ident),
             Expression::Int(int) => write!(f, "{}", int),
+            Expression::PrefixExpression(prefix_operator, expression) => {
+                write!(f, "({}{})", prefix_operator, expression)
+            }
+        }
+    }
+}
+
+impl fmt::Display for PrefixOperator {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            PrefixOperator::Bang => write!(f, "!"),
+            PrefixOperator::Minus => write!(f, "-"),
         }
     }
 }
@@ -271,6 +292,5 @@ let myVar = anotherVar;
         let program = p.parse_program().unwrap();
 
         assert_eq!(program.to_string(), "let myVar = anotherVar;");
-
     }
 }

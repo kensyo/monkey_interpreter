@@ -1,6 +1,6 @@
 use core::fmt;
 
-use crate::ast::{Expression, Ident, Int, Program, Statement};
+use crate::ast::{Expression, Ident, Int, PrefixOperator, Program, Statement};
 use crate::lexer::Lexer;
 use crate::token::Token;
 
@@ -46,13 +46,24 @@ impl<'a> Parser<'a> {
     pub fn parse_program(&mut self) -> Result<Program, ParseError> {
         match self.cur_token {
             // <Program> -> { <Statement> } EOF の Director
-            Token::Let | Token::EOF | Token::Return | Token::Ident(_) | Token::Int(_) => {
+            Token::Let
+            | Token::EOF
+            | Token::Return
+            | Token::Ident(_)
+            | Token::Int(_)
+            | Token::Bang
+            | Token::Minus => {
                 // T({ <Statement> })
                 let mut statements = vec![];
                 // <Statement> の First
                 while matches!(
                     self.cur_token,
-                    Token::Let | Token::Return | Token::Ident(_) | Token::Int(_)
+                    Token::Let
+                        | Token::Return
+                        | Token::Ident(_)
+                        | Token::Int(_)
+                        | Token::Bang
+                        | Token::Minus
                 ) {
                     // T(<Statement>)
                     let statement = self.parse_statement()?;
@@ -72,7 +83,7 @@ impl<'a> Parser<'a> {
         }
     }
 
-    // <Statement> -> let [Ident] = <Expression> ; | return <Expression> ;
+    // <Statement> -> let [Ident] = <Expression> ; | return <Expression> ; | <Expression> ;
     pub fn parse_statement(&mut self) -> Result<Statement, ParseError> {
         match self.cur_token {
             // <Statement> -> let [Ident] = <Expression> ; の Director
@@ -87,7 +98,7 @@ impl<'a> Parser<'a> {
                 self.parse_token(Token::Assign)?;
 
                 // T(<Expression>)
-                let expression = self.parse_expression(Precedence::Lowest)?;
+                let expression = self.parse_expression()?;
 
                 // T(;)
                 self.parse_token(Token::Semicolon)?;
@@ -95,13 +106,13 @@ impl<'a> Parser<'a> {
                 Ok(Statement::Let(ident, expression))
             }
 
-            // <Program> -> return <Expression> ; の Director
+            // <Statement> -> return <Expression> ; の Director
             Token::Return => {
                 // T(return)
                 self.parse_token(Token::Return)?;
 
                 // T(<Expression>)
-                let expression = self.parse_expression(Precedence::Lowest)?;
+                let expression = self.parse_expression()?;
 
                 // T(;)
                 self.parse_token(Token::Semicolon)?;
@@ -109,10 +120,10 @@ impl<'a> Parser<'a> {
                 Ok(Statement::Return(expression))
             }
 
-            // <Program> -> <Expression> ; の Director
-            Token::Int(_) | Token::Ident(_) => {
+            // <Statement> -> <Expression> ; の Director
+            Token::Int(_) | Token::Ident(_) | Token::Bang | Token::Minus => {
                 // T(<Expression>)
-                let expression = self.parse_expression(Precedence::Lowest)?;
+                let expression = self.parse_expression()?;
 
                 // T(;)
                 self.parse_token(Token::Semicolon)?;
@@ -127,12 +138,25 @@ impl<'a> Parser<'a> {
         }
     }
 
-    // <Expression> -> [Ident] | [Int]
-    pub fn parse_expression(&mut self, precedence: Precedence) -> Result<Expression, ParseError> {
+    // <Expression> -> [Ident] | [Int] | <Prefix Operator> <Expression>
+    pub fn parse_expression(&mut self) -> Result<Expression, ParseError> {
+        let expression = self.parse_expression_pratt(Precedence::Lowest)?;
+
+        // pratt パーシングではその中で next_token を呼ばないのでここで呼んでおく
+        self.next_token();
+        Ok(expression)
+    }
+
+    pub fn parse_expression_pratt(
+        &mut self,
+        precedence: Precedence,
+    ) -> Result<Expression, ParseError> {
         // prefix
         let left_expression = match self.cur_token {
             Token::Ident(_) => self.parse_ident_pratt()?,
             Token::Int(_) => self.parse_int_pratt()?,
+            Token::Bang => self.parse_prefix_expression_pratt()?,
+            Token::Minus => self.parse_prefix_expression_pratt()?,
 
             _ => {
                 return Err(ParseError::PrattPrefix {
@@ -141,8 +165,6 @@ impl<'a> Parser<'a> {
             }
         };
 
-        // pratt パーシングではその中で next_token を呼ばないのでここで呼んでおく
-        self.next_token();
         Ok(left_expression)
 
         // // <Expression> -> [Ident] | [Int] の Director
@@ -228,6 +250,22 @@ impl<'a> Parser<'a> {
             });
         }
     }
+
+    pub fn parse_prefix_expression_pratt(&mut self) -> Result<Expression, ParseError> {
+        // NOTE: ll1 解析と同じようにやっても良い気がする
+        let prefix_operator = match self.cur_token {
+            Token::Bang => PrefixOperator::Bang,
+            Token::Minus => PrefixOperator::Minus,
+            _ => unreachable!(),
+        };
+
+        self.next_token();
+
+        Ok(Expression::PrefixExpression(
+            prefix_operator,
+            Box::new(self.parse_expression_pratt(Precedence::Prefix)?),
+        ))
+    }
 }
 
 #[derive(Debug)]
@@ -269,7 +307,7 @@ impl fmt::Display for ParseError {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::ast::{Expression, Ident, Int, Statement};
+    use crate::ast::{Expression, Ident, Int, PrefixOperator, Statement};
     use crate::lexer::Lexer;
 
     #[test]
@@ -419,5 +457,50 @@ foobar;
         };
 
         assert_eq!(int.0, 5);
+    }
+
+    #[test]
+    // p.63
+    fn test_parsing_prefix_expressions() {
+        let prefix_tests = vec![
+            ("!5;", PrefixOperator::Bang, Expression::Int(Int(5))),
+            ("-15;", PrefixOperator::Minus, Expression::Int(Int(15))),
+        ];
+
+        for (input, expected_prefix_operator, expected_expression) in prefix_tests.iter() {
+            let mut l = Lexer::new(input);
+            let mut p = Parser::new(&mut l);
+
+            // parse_program がエラーを返していたらパニックして終了
+            let program = p.parse_program().unwrap();
+
+            let statements = match program {
+                Program::Program(s_s) => {
+                    assert_eq!(s_s.len(), 1);
+                    s_s
+                }
+            };
+
+            let statement = statements.into_iter().next().unwrap();
+
+            let expression = match statement {
+                Statement::Expression(expr) => expr,
+                _ => {
+                    panic!("{} is not expression statement", statement);
+                }
+            };
+
+            let (prefix_operator, expression2) = match expression {
+                Expression::PrefixExpression(prefix_operator, expression) => {
+                    (prefix_operator, expression)
+                }
+                _ => {
+                    panic!("{} is not prefix expression", expression);
+                }
+            };
+
+            assert_eq!(*expected_prefix_operator, prefix_operator);
+            assert_eq!(*expected_expression, *expression2);
+        }
     }
 }
