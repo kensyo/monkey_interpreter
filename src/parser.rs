@@ -1,21 +1,30 @@
 use core::fmt;
 use std::collections::HashMap;
+use std::mem::{discriminant, Discriminant};
 
 use crate::ast::{Expression, Ident, Int, Program, Statement};
 use crate::lexer::Lexer;
 use crate::token::Token;
 
-pub type PrefixParseFn = fn() -> Expression;
-pub type InfixParseFn = fn(Expression) -> Expression;
+pub type PrefixParseFn = fn() -> Result<Expression, ParseError>;
+pub type InfixParseFn = fn(Expression) -> Result<Expression, ParseError>;
+
+#[derive(PartialEq, PartialOrd, Debug, Clone)]
+pub enum Precedence {
+    Lowest,
+    Equals,      // ==
+    LessGreater, // > or <
+    Sum,         // +
+    Product,     // *
+    Prefix,      // -X or !X
+    Call,        // myFunction(x)
+}
 
 pub struct Parser<'a> {
     l: &'a mut Lexer<'a>,
 
     cur_token: Token,
     peek_token: Token,
-
-    prefix_parse_fns: HashMap<Token, PrefixParseFn>,
-    infix_parse_fns: HashMap<Token, InfixParseFn>,
 }
 
 impl<'a> Parser<'a> {
@@ -27,8 +36,6 @@ impl<'a> Parser<'a> {
             l,
             cur_token,
             peek_token,
-            prefix_parse_fns: HashMap::new(),
-            infix_parse_fns: HashMap::new(),
         }
     }
 
@@ -37,31 +44,18 @@ impl<'a> Parser<'a> {
         self.peek_token = self.l.next_token();
     }
 
-    pub fn register_prefix(&mut self, token: Token, f: PrefixParseFn) {
-        // upsert
-        self.prefix_parse_fns
-            .entry(token)
-            .and_modify(|v| *v = f)
-            .or_insert(f);
-    }
-
-    pub fn register_infix(&mut self, token: Token, f: InfixParseFn) {
-        // upsert
-        self.infix_parse_fns
-            .entry(token)
-            .and_modify(|v| *v = f)
-            .or_insert(f);
-    }
-
     // <Program> -> { <Statement> } EOF
     pub fn parse_program(&mut self) -> Result<Program, ParseError> {
         match self.cur_token {
             // <Program> -> { <Statement> } EOF の Director
-            Token::Let | Token::EOF | Token::Return => {
+            Token::Let | Token::EOF | Token::Return | Token::Ident(_) | Token::Int(_) => {
                 // T({ <Statement> })
                 let mut statements = vec![];
                 // <Statement> の First
-                while matches!(self.cur_token, Token::Let | Token::Return) {
+                while matches!(
+                    self.cur_token,
+                    Token::Let | Token::Return | Token::Ident(_) | Token::Int(_)
+                ) {
                     // T(<Statement>)
                     let statement = self.parse_statement()?;
                     statements.push(statement);
@@ -95,7 +89,7 @@ impl<'a> Parser<'a> {
                 self.parse_token(Token::Assign)?;
 
                 // T(<Expression>)
-                let expression = self.parse_expression()?;
+                let expression = self.parse_expression(Precedence::Lowest)?;
 
                 // T(;)
                 self.parse_token(Token::Semicolon)?;
@@ -109,12 +103,23 @@ impl<'a> Parser<'a> {
                 self.parse_token(Token::Return)?;
 
                 // T(<Expression>)
-                let expression = self.parse_expression()?;
+                let expression = self.parse_expression(Precedence::Lowest)?;
 
                 // T(;)
                 self.parse_token(Token::Semicolon)?;
 
                 Ok(Statement::Return(expression))
+            }
+
+            // <Program> -> <Expression> ; の Director
+            Token::Int(_) | Token::Ident(_) => {
+                // T(<Expression>)
+                let expression = self.parse_expression(Precedence::Lowest)?;
+
+                // T(;)
+                self.parse_token(Token::Semicolon)?;
+
+                Ok(Statement::Expression(expression))
             }
 
             _ => Err(ParseError::Symbol {
@@ -125,25 +130,40 @@ impl<'a> Parser<'a> {
     }
 
     // <Expression> -> [Ident] | [Int]
-    pub fn parse_expression(&mut self) -> Result<Expression, ParseError> {
-        // <Expression> -> [Ident] | [Int] の Director
-        match self.cur_token {
-            // <Expression> -> [Ident] の Director
-            Token::Ident(_) => {
-                let ident = self.parse_ident_token()?;
-                Ok(Expression::Ident(ident))
-            }
-            // <Expression> -> [Int] の Director
-            Token::Int(_) => {
-                let int = self.parse_int_token()?;
-                Ok(Expression::Int(int))
-            }
+    pub fn parse_expression(&mut self, precedence: Precedence) -> Result<Expression, ParseError> {
+        // prefix
+        let left_expression = match self.cur_token {
+            Token::Ident(_) => self.parse_ident_pratt()?,
 
-            _ => Err(ParseError::Symbol {
-                symbol: "<expression>".to_string(),
-                current_token: self.cur_token.clone(),
-            }),
-        }
+            _ => {
+                return Err(ParseError::PrattPrefix {
+                    current_token: self.cur_token.clone(),
+                })
+            }
+        };
+
+        // pratt パーシングではその中で next_token を呼ばないのでここで呼んでおく
+        self.next_token();
+        Ok(left_expression)
+
+        // // <Expression> -> [Ident] | [Int] の Director
+        // match self.cur_token {
+        //     // <Expression> -> [Ident] の Director
+        //     Token::Ident(_) => {
+        //         let ident = self.parse_ident_token()?;
+        //         Ok(Expression::Ident(ident))
+        //     }
+        //     // <Expression> -> [Int] の Director
+        //     Token::Int(_) => {
+        //         let int = self.parse_int_token()?;
+        //         Ok(Expression::Int(int))
+        //     }
+        //
+        //     _ => Err(ParseError::Symbol {
+        //         symbol: "<expression>".to_string(),
+        //         current_token: self.cur_token.clone(),
+        //     }),
+        // }
     }
 
     pub fn parse_token(&mut self, expected_token: Token) -> Result<(), ParseError> {
@@ -183,12 +203,28 @@ impl<'a> Parser<'a> {
             });
         }
     }
+
+    pub fn parse_ident_pratt(&mut self) -> Result<Expression, ParseError> {
+        if let Token::Ident(ref val) = self.cur_token {
+            let str = val.clone();
+            // self.next_token();
+            Ok(Expression::Ident(Ident(str)))
+        } else {
+            return Err(ParseError::Symbol {
+                symbol: "[ident]".to_string(),
+                current_token: self.cur_token.clone(),
+            });
+        }
+    }
 }
 
 #[derive(Debug)]
 pub enum ParseError {
     Symbol {
         symbol: String,
+        current_token: Token,
+    },
+    PrattPrefix {
         current_token: Token,
     },
 }
@@ -204,6 +240,13 @@ impl fmt::Display for ParseError {
                     f,
                     "Error: An inconsistency was detected while executing the parsing function for the symbol {}. Encountered unexpected token: {:?}.",
                     symbol,
+                    current_token
+                )
+            }
+            ParseError::PrattPrefix { current_token } => {
+                write!(
+                    f,
+                    "Error: No corresponding prefix parse function for token {:?}.",
                     current_token
                 )
             }
