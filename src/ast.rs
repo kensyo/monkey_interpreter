@@ -204,6 +204,8 @@ pub struct Ident(pub String);
 #[derive(Debug, PartialEq)]
 pub struct Int(pub usize);
 
+// 以下 Display トレイト実装
+
 use std::fmt;
 
 impl fmt::Display for Program {

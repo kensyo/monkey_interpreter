@@ -1,6 +1,4 @@
 use core::fmt;
-use std::collections::HashMap;
-use std::mem::{discriminant, Discriminant};
 
 use crate::ast::{Expression, Ident, Int, Program, Statement};
 use crate::lexer::Lexer;
@@ -134,6 +132,7 @@ impl<'a> Parser<'a> {
         // prefix
         let left_expression = match self.cur_token {
             Token::Ident(_) => self.parse_ident_pratt()?,
+            Token::Int(_) => self.parse_int_pratt()?,
 
             _ => {
                 return Err(ParseError::PrattPrefix {
@@ -211,7 +210,20 @@ impl<'a> Parser<'a> {
             Ok(Expression::Ident(Ident(str)))
         } else {
             return Err(ParseError::Symbol {
-                symbol: "[ident]".to_string(),
+                symbol: "[ident](pratt)".to_string(),
+                current_token: self.cur_token.clone(),
+            });
+        }
+    }
+
+    pub fn parse_int_pratt(&mut self) -> Result<Expression, ParseError> {
+        if let Token::Int(ref val) = self.cur_token {
+            let num = val.clone();
+            // self.next_token();
+            Ok(Expression::Int(Int(num)))
+        } else {
+            return Err(ParseError::Symbol {
+                symbol: "[int](pratt)".to_string(),
                 current_token: self.cur_token.clone(),
             });
         }
@@ -368,5 +380,44 @@ foobar;
         };
 
         assert_eq!(ident.0, "foobar");
+    }
+
+    #[test]
+    // p.60
+    fn test_integral_literal_expression() {
+        let input = r#"
+5;
+"#;
+
+        let mut l = Lexer::new(input);
+        let mut p = Parser::new(&mut l);
+
+        // parse_program がエラーを返していたらパニックして終了
+        let program = p.parse_program().unwrap();
+
+        let statements = match program {
+            Program::Program(s_s) => {
+                assert_eq!(s_s.len(), 1);
+                s_s
+            }
+        };
+
+        let statement = statements.into_iter().next().unwrap();
+
+        let expression = match statement {
+            Statement::Expression(expr) => expr,
+            _ => {
+                panic!("{} is not expression statement", statement);
+            }
+        };
+
+        let int = match expression {
+            Expression::Int(int) => int,
+            _ => {
+                panic!("{} is not int expression", expression);
+            }
+        };
+
+        assert_eq!(int.0, 5);
     }
 }
