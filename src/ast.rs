@@ -173,8 +173,9 @@
 // Monkey言語 正規右辺文法
 // <Program> -> { <Statement> } EOF
 // <Statement> -> let [Ident] = <Expression> ; | return <Expression> ; | <Expression> ;
-// <Expression> -> [Ident] | [Int] | <Prefix operator> <Expression>
+// <Expression> -> [Ident] | [Int] | <Prefix operator> <Expression> | <Expression> <Infix operator> <Expression>
 // <Prefix operator> -> ! | -
+// <Infix operator> -> + | - | * | / | > | < | == | !=
 //
 
 // <Program> -> { <Statement> } EOF
@@ -191,12 +192,13 @@ pub enum Statement {
     Expression(Expression), // 式文(セミコロンの省略はしないものとする)
 }
 
-// <Expression> -> [Ident] | [Int] | <Prefix operator> <Expression>
+// <Expression> -> [Ident] | [Int] | <Prefix operator> <Expression> | <Expression> <Infix operator> <Expression>
 #[derive(Debug, PartialEq)]
 pub enum Expression {
     Ident(Ident),
     Int(Int),
     PrefixExpression(PrefixOperator, Box<Expression>),
+    InfixExpression(Box<Expression>, InfixOperator, Box<Expression>),
 }
 
 // <Prefix operator> -> ! | -
@@ -204,6 +206,21 @@ pub enum Expression {
 pub enum PrefixOperator {
     Bang,
     Minus,
+}
+
+// <Infix operator> -> + | - | * | / | > | < | == | !=
+#[derive(Debug, PartialEq)]
+pub enum InfixOperator {
+    Plus,     // +
+    Minus,    // -
+    Asterisk, // *
+    Slash,    // /
+
+    Lt, // <
+    Gt, // >
+
+    Eq,    // ==
+    NotEq, // !=
 }
 
 // 付随する値を持つトークン
@@ -248,6 +265,13 @@ impl fmt::Display for Expression {
             Expression::PrefixExpression(prefix_operator, expression) => {
                 write!(f, "({}{})", prefix_operator, expression)
             }
+            Expression::InfixExpression(left_expression, infix_operator, right_expression) => {
+                write!(
+                    f,
+                    "({} {} {})",
+                    left_expression, infix_operator, right_expression
+                )
+            }
         }
     }
 }
@@ -257,6 +281,21 @@ impl fmt::Display for PrefixOperator {
         match self {
             PrefixOperator::Bang => write!(f, "!"),
             PrefixOperator::Minus => write!(f, "-"),
+        }
+    }
+}
+
+impl fmt::Display for InfixOperator {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            InfixOperator::Plus => write!(f, "+"),
+            InfixOperator::Minus => write!(f, "-"),
+            InfixOperator::Asterisk => write!(f, "*"),
+            InfixOperator::Slash => write!(f, "/"),
+            InfixOperator::Lt => write!(f, "<"),
+            InfixOperator::Gt => write!(f, ">"),
+            InfixOperator::Eq => write!(f, "=="),
+            InfixOperator::NotEq => write!(f, "!="),
         }
     }
 }
