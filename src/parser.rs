@@ -161,7 +161,7 @@ impl<'a> Parser<'a> {
         let expression = self.parse_expression_pratt(Precedence::Lowest)?;
 
         // pratt パーシングではその中で next_token を呼ばないのでここで呼んでおく
-        // self.next_token();
+        self.next_token();
         Ok(expression)
     }
 
@@ -185,8 +185,8 @@ impl<'a> Parser<'a> {
 
         // NOTE: self.peek_token != Token::Semicolon という条件は果たしているのか？ -> 多分いらない
         // while self.cur_token != Token::Semicolon && precedence < self.cur_precedence() {
-        while precedence < self.cur_precedence() {
-            match self.cur_token {
+        while precedence < self.peek_precedence() {
+            match self.peek_token {
                 Token::Plus
                 | Token::Minus
                 | Token::Asterisk
@@ -195,7 +195,7 @@ impl<'a> Parser<'a> {
                 | Token::Gt
                 | Token::Eq
                 | Token::NotEq => {
-                    // self.next_token();
+                    self.next_token();
                     left_expression = self.parse_infix_expression_pratt(left_expression)?;
                 }
                 _ => return Ok(left_expression),
@@ -246,7 +246,7 @@ impl<'a> Parser<'a> {
     pub fn parse_ident_pratt(&mut self) -> Result<Expression, ParseError> {
         if let Token::Ident(ref val) = self.cur_token {
             let str = val.clone();
-            self.next_token();
+            // self.next_token();
             Ok(Expression::Ident(Ident(str)))
         } else {
             return Err(ParseError::Symbol {
@@ -259,7 +259,7 @@ impl<'a> Parser<'a> {
     pub fn parse_int_pratt(&mut self) -> Result<Expression, ParseError> {
         if let Token::Int(ref val) = self.cur_token {
             let num = val.clone();
-            self.next_token();
+            // self.next_token();
             Ok(Expression::Int(Int(num)))
         } else {
             return Err(ParseError::Symbol {
