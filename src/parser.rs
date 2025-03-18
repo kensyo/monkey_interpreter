@@ -404,7 +404,13 @@ impl<'a> Parser<'a> {
         let infix_operator = self.parse_infix_operator()?;
 
         // <Expression>
-        let right_expression = self.parse_expression_pratt(precedence)?;
+        let right_expression = if precedence == Precedence::Sum {
+            let h = self.parse_expression_pratt(Precedence::LessGreater)?;
+            h
+        } else {
+            let h = self.parse_expression_pratt(precedence)?;
+            h
+        };
 
         Ok(Expression::InfixExpression(
             Box::new(left_expression),
