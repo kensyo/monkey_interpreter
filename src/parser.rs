@@ -328,9 +328,11 @@ impl<'a> Parser<'a> {
     ) -> Result<Expression, ParseError> {
         // prefix
         let mut left_expression = match self.cur_token {
+            // オペランド
             Token::Ident(_) => self.parse_ident_pratt()?,
             Token::Int(_) => self.parse_int_pratt()?,
 
+            // 前置演算子
             Token::Bang => self.parse_prefix_expression_pratt()?,
             Token::Minus => self.parse_prefix_expression_pratt()?,
 
@@ -343,8 +345,11 @@ impl<'a> Parser<'a> {
 
         // NOTE: self.peek_token != Token::Semicolon という条件は果たしているのか？ -> 多分いらない
         // while self.cur_token != Token::Semicolon && precedence < self.cur_precedence() {
+        // self.cur_precedece() は今のトークンが中置演算子以外だとLowestを返すようになっているので、その場合
+        // while の中身は実行されなくなる
         while precedence < self.cur_precedence_infix() {
             match self.cur_token {
+                // 中置演算子
                 Token::Plus
                 | Token::Minus
                 | Token::Asterisk
@@ -353,7 +358,6 @@ impl<'a> Parser<'a> {
                 | Token::Gt
                 | Token::Eq
                 | Token::NotEq => {
-                    // self.next_token();
                     left_expression = self.parse_infix_expression_pratt(left_expression)?;
                 }
                 _ => return Ok(left_expression),
