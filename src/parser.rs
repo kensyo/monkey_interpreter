@@ -1,6 +1,8 @@
 use core::fmt;
 
-use crate::ast::{Expression, Ident, InfixOperator, Int, PrefixOperator, Program, Statement};
+use crate::ast::{
+    Boolean, Expression, Ident, InfixOperator, Int, PrefixOperator, Program, Statement,
+};
 use crate::lexer::Lexer;
 use crate::token::Token;
 
@@ -87,7 +89,9 @@ impl<'a> Parser<'a> {
             | Token::Ident(_)
             | Token::Int(_)
             | Token::Bang
-            | Token::Minus => {
+            | Token::Minus
+            | Token::True
+            | Token::False => {
                 // T({ <Statement> })
                 let mut statements = vec![];
                 // <Statement> の First
@@ -99,6 +103,8 @@ impl<'a> Parser<'a> {
                         | Token::Int(_)
                         | Token::Bang
                         | Token::Minus
+                        | Token::True
+                        | Token::False
                 ) {
                     // T(<Statement>)
                     let statement = self.parse_statement()?;
@@ -156,7 +162,12 @@ impl<'a> Parser<'a> {
             }
 
             // <Statement> -> <Expression> ; の Director
-            Token::Int(_) | Token::Ident(_) | Token::Bang | Token::Minus => {
+            Token::Int(_)
+            | Token::Ident(_)
+            | Token::Bang
+            | Token::Minus
+            | Token::True
+            | Token::False => {
                 // T(<Expression>)
                 let expression = self.parse_expression()?;
 
@@ -173,7 +184,7 @@ impl<'a> Parser<'a> {
         }
     }
 
-    // <Expression> -> [Ident] | [Int] | <Prefix Operator> <Expression> | <Expression> <Infix operator> <Expression>
+    // <Expression> -> [Ident] | [Int] | <Prefix Operator> <Expression> | <Expression> <Infix operator> <Expression> | <Boolean>
     pub fn parse_expression(&mut self) -> Result<Expression, ParseError> {
         let expression = self.parse_expression_pratt(Precedence::Lowest)?;
 
@@ -279,6 +290,32 @@ impl<'a> Parser<'a> {
         }
     }
 
+    // <Boolean> -> true | false
+    pub fn parse_boolean(&mut self) -> Result<Boolean, ParseError> {
+        match self.cur_token {
+            // <Boolean> -> true の Director
+            Token::True => {
+                // T(true
+                self.parse_token(Token::True)?;
+
+                Ok(Boolean::True)
+            }
+
+            // <Boolean> -> false の Director
+            Token::False => {
+                // T(true
+                self.parse_token(Token::False)?;
+
+                Ok(Boolean::False)
+            }
+
+            _ => Err(ParseError::Symbol {
+                symbol: "<boolean>".to_string(),
+                current_token: self.cur_token.clone(),
+            }),
+        }
+    }
+
     pub fn parse_token(&mut self, expected_token: Token) -> Result<(), ParseError> {
         if self.cur_token.is_same_variant(&expected_token) {
             self.next_token();
@@ -329,12 +366,16 @@ impl<'a> Parser<'a> {
         // prefix
         let mut left_expression = match self.cur_token {
             // オペランド
+            // <Expression> -> [Ident]
             Token::Ident(_) => self.parse_ident_pratt()?,
+            // <Expression> -> [Int]
             Token::Int(_) => self.parse_int_pratt()?,
+            // <Expression> -> <Boolean>
+            Token::True | Token::False => self.parse_boolean_pratt()?,
 
             // 前置演算子
-            Token::Bang => self.parse_prefix_expression_pratt()?,
-            Token::Minus => self.parse_prefix_expression_pratt()?,
+            // <Expression> -> <Prefix operator> <Expression>
+            Token::Bang | Token::Minus=> self.parse_prefix_expression_pratt()?,
 
             _ => {
                 return Err(ParseError::PrattPrefix {
@@ -352,6 +393,7 @@ impl<'a> Parser<'a> {
         while precedence < self.cur_precedence_infix() {
             match self.cur_token {
                 // 中置演算子
+                // <Expression> -> <Expression> <Infix operator> <Expression>
                 Token::Plus
                 | Token::Minus
                 | Token::Asterisk
@@ -379,6 +421,12 @@ impl<'a> Parser<'a> {
     pub fn parse_int_pratt(&mut self) -> Result<Expression, ParseError> {
         let int = self.parse_int_token()?;
         Ok(Expression::Int(int))
+    }
+
+    // pratt parse for <Expression> -> <Boolean>
+    pub fn parse_boolean_pratt(&mut self) -> Result<Expression, ParseError> {
+        let boolean = self.parse_boolean()?;
+        Ok(Expression::Boolean(boolean))
     }
 
     // pratt parse for <Expression> -> <Prefix Operator> <Expression>
@@ -455,7 +503,7 @@ impl fmt::Display for ParseError {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::ast::{Expression, Ident, InfixOperator, Int, PrefixOperator, Statement};
+    use crate::ast::{Boolean, Expression, Ident, InfixOperator, Int, PrefixOperator, Statement};
     use crate::lexer::Lexer;
 
     #[test]
@@ -775,6 +823,44 @@ foobar;
             let actual = program.to_string();
 
             assert_eq!(actual, expected);
+        }
+    }
+
+    // p.88
+    #[test]
+    fn test_boolean_expression() {
+        let tests = vec![("true;", Boolean::True), ("false;", Boolean::False)];
+
+        for (input, expected) in tests {
+            let mut l = Lexer::new(input);
+            let mut p = Parser::new(&mut l);
+
+            let program = p.parse_program().unwrap();
+
+            let statements = match program {
+                Program::Program(s_s) => {
+                    assert_eq!(s_s.len(), 1);
+                    s_s
+                }
+            };
+
+            let statement = statements.into_iter().next().unwrap();
+
+            let expression = match statement {
+                Statement::Expression(expr) => expr,
+                _ => {
+                    panic!("{} is not expression statement", statement);
+                }
+            };
+
+            let boolean = match expression {
+                Expression::Boolean(boolean) => boolean,
+                _ => {
+                    panic!("{} is not boolean expression", expression);
+                }
+            };
+
+            assert_eq!(boolean, expected);
         }
     }
 }

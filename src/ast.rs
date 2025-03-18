@@ -173,15 +173,20 @@
 // Monkey言語 正規右辺文法
 // <Program> -> { <Statement> } EOF
 // <Statement> -> let [Ident] = <Expression> ; | return <Expression> ; | <Expression> ;
-// <Expression> -> [Ident] | [Int] | <Prefix operator> <Expression> | <Expression> <Infix operator> <Expression>
+// <Expression> -> [Ident]
+//                   | [Int]
+//                   | <Prefix operator> <Expression>
+//                   | <Expression> <Infix operator> <Expression>
+//                   | <Boolean>
 // <Prefix operator> -> ! | -
 // <Infix operator> -> + | - | * | / | > | < | == | !=
+// <Boolean> -> true | false
 //
 
 // <Program> -> { <Statement> } EOF
 #[derive(Debug, PartialEq)]
 pub enum Program {
-    Program(Vec<Statement>),
+    Program(Vec<Statement>), // 1種類しかないやつはHoge::Hogeのようなバリアントの命名をすることにする
 }
 
 // <Statement> -> let [Ident] = <Expression> ; | return <Expression> ; | <Expression> ;
@@ -192,13 +197,18 @@ pub enum Statement {
     Expression(Expression), // 式文(セミコロンの省略はしないものとする)
 }
 
-// <Expression> -> [Ident] | [Int] | <Prefix operator> <Expression> | <Expression> <Infix operator> <Expression>
+// <Expression> -> [Ident]
+//                   | [Int]
+//                   | <Prefix operator> <Expression>
+//                   | <Expression> <Infix operator> <Expression>
+//                   | <Boolean>
 #[derive(Debug, PartialEq)]
 pub enum Expression {
     Ident(Ident),
     Int(Int),
     PrefixExpression(PrefixOperator, Box<Expression>),
     InfixExpression(Box<Expression>, InfixOperator, Box<Expression>),
+    Boolean(Boolean),
 }
 
 // <Prefix operator> -> ! | -
@@ -221,6 +231,13 @@ pub enum InfixOperator {
 
     Eq,    // ==
     NotEq, // !=
+}
+
+// <Boolean> -> true | false
+#[derive(Debug, PartialEq)]
+pub enum Boolean {
+    True,
+    False,
 }
 
 // 付随する値を持つトークン
@@ -272,6 +289,9 @@ impl fmt::Display for Expression {
                     left_expression, infix_operator, right_expression
                 )
             }
+            Expression::Boolean(boolean) => {
+                write!(f, "{}", boolean)
+            }
         }
     }
 }
@@ -296,6 +316,15 @@ impl fmt::Display for InfixOperator {
             InfixOperator::Gt => write!(f, ">"),
             InfixOperator::Eq => write!(f, "=="),
             InfixOperator::NotEq => write!(f, "!="),
+        }
+    }
+}
+
+impl fmt::Display for Boolean {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Boolean::True => write!(f, "true"),
+            Boolean::False => write!(f, "false"),
         }
     }
 }
