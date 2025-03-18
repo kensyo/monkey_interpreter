@@ -37,7 +37,24 @@ impl<'a> Parser<'a> {
         }
     }
 
-    fn token_to_precedence(token: &Token) -> Precedence {
+    // 前置演算子の優先度
+    fn token_to_precedence_prefix(token: &Token) -> Precedence {
+        match token {
+            Token::Bang | Token::Minus => Precedence::Prefix,
+            _ => Precedence::Lowest,
+        }
+    }
+
+    fn peek_precedence_prefix(&self) -> Precedence {
+        Parser::token_to_precedence_prefix(&self.peek_token)
+    }
+
+    fn cur_precedence_prefix(&self) -> Precedence {
+        Parser::token_to_precedence_prefix(&self.cur_token)
+    }
+
+    // 中置演算子の優先度
+    fn token_to_precedence_infix(token: &Token) -> Precedence {
         match token {
             Token::Eq | Token::NotEq => Precedence::Equals,
             Token::Lt | Token::Gt => Precedence::LessGreater,
@@ -47,12 +64,12 @@ impl<'a> Parser<'a> {
         }
     }
 
-    fn peek_precedence(&self) -> Precedence {
-        Parser::token_to_precedence(&self.peek_token)
+    fn peek_precedence_infix(&self) -> Precedence {
+        Parser::token_to_precedence_infix(&self.peek_token)
     }
 
-    fn cur_precedence(&self) -> Precedence {
-        Parser::token_to_precedence(&self.cur_token)
+    fn cur_precedence_infix(&self) -> Precedence {
+        Parser::token_to_precedence_infix(&self.cur_token)
     }
 
     fn next_token(&mut self) {
@@ -165,44 +182,101 @@ impl<'a> Parser<'a> {
         Ok(expression)
     }
 
-    pub fn parse_expression_pratt(
-        &mut self,
-        precedence: Precedence,
-    ) -> Result<Expression, ParseError> {
-        // prefix
-        let mut left_expression = match self.cur_token {
-            Token::Ident(_) => self.parse_ident_pratt()?,
-            Token::Int(_) => self.parse_int_pratt()?,
-            Token::Bang => self.parse_prefix_expression_pratt()?,
-            Token::Minus => self.parse_prefix_expression_pratt()?,
+    // <Prefix operator> -> ! | -
+    pub fn parse_prefix_operator(&mut self) -> Result<PrefixOperator, ParseError> {
+        match self.cur_token {
+            // <Prefix operator> -> ! の Director
+            Token::Bang => {
+                self.parse_token(Token::Bang)?;
 
-            _ => {
-                return Err(ParseError::PrattPrefix {
-                    current_token: self.cur_token.clone(),
-                })
+                Ok(PrefixOperator::Bang)
             }
-        };
+            // <Prefix operator> -> - の Director
+            Token::Minus => {
+                self.parse_token(Token::Minus)?;
 
-        // NOTE: self.peek_token != Token::Semicolon という条件は果たしているのか？ -> 多分いらない
-        // while self.cur_token != Token::Semicolon && precedence < self.cur_precedence() {
-        while precedence < self.cur_precedence() {
-            match self.cur_token {
-                Token::Plus
-                | Token::Minus
-                | Token::Asterisk
-                | Token::Slash
-                | Token::Lt
-                | Token::Gt
-                | Token::Eq
-                | Token::NotEq => {
-                    // self.next_token();
-                    left_expression = self.parse_infix_expression_pratt(left_expression)?;
-                }
-                _ => return Ok(left_expression),
+                Ok(PrefixOperator::Minus)
             }
+
+            _ => Err(ParseError::Symbol {
+                symbol: "<prefix operator>".to_string(),
+                current_token: self.cur_token.clone(),
+            }),
         }
+    }
 
-        Ok(left_expression)
+    // <Infix operator> -> + | - | * | / | > | < | == | !=
+    pub fn parse_infix_operator(&mut self) -> Result<InfixOperator, ParseError> {
+        match self.cur_token {
+            // <Infix operator> -> + の Director
+            Token::Plus => {
+                // T(+)
+                self.parse_token(Token::Plus)?;
+
+                Ok(InfixOperator::Plus)
+            }
+
+            // <Infix operator> -> - の Director
+            Token::Minus => {
+                // T(-)
+                self.parse_token(Token::Minus)?;
+
+                Ok(InfixOperator::Minus)
+            }
+
+            // <Infix operator> -> * の Director
+            Token::Asterisk => {
+                // T(*)
+                self.parse_token(Token::Asterisk)?;
+
+                Ok(InfixOperator::Asterisk)
+            }
+
+            // <Infix operator> -> / の Director
+            Token::Slash => {
+                // T(/)
+                self.parse_token(Token::Slash)?;
+
+                Ok(InfixOperator::Slash)
+            }
+
+            // <Infix operator> -> > の Director
+            Token::Gt => {
+                // T(>)
+                self.parse_token(Token::Gt)?;
+
+                Ok(InfixOperator::Gt)
+            }
+
+            // <Infix operator> -> < の Director
+            Token::Lt => {
+                // T(<)
+                self.parse_token(Token::Lt)?;
+
+                Ok(InfixOperator::Lt)
+            }
+
+            // <Infix operator> -> == の Director
+            Token::Eq => {
+                // T(==)
+                self.parse_token(Token::Eq)?;
+
+                Ok(InfixOperator::Eq)
+            }
+
+            // <Infix operator> -> != の Director
+            Token::NotEq => {
+                // T(!=)
+                self.parse_token(Token::NotEq)?;
+
+                Ok(InfixOperator::NotEq)
+            }
+
+            _ => Err(ParseError::Symbol {
+                symbol: "<infix operator>".to_string(),
+                current_token: self.cur_token.clone(),
+            }),
+        }
     }
 
     pub fn parse_token(&mut self, expected_token: Token) -> Result<(), ParseError> {
@@ -243,67 +317,89 @@ impl<'a> Parser<'a> {
         }
     }
 
-    pub fn parse_ident_pratt(&mut self) -> Result<Expression, ParseError> {
-        if let Token::Ident(ref val) = self.cur_token {
-            let str = val.clone();
-            self.next_token();
-            Ok(Expression::Ident(Ident(str)))
-        } else {
-            return Err(ParseError::Symbol {
-                symbol: "[ident](pratt)".to_string(),
-                current_token: self.cur_token.clone(),
-            });
-        }
-    }
+    // 以下 pratt 構文解析用のメソッド
+    // pratt 構文解析の返り値は全て Expression であることに注意
+    // 大元である parse_expression_pratt 以外の pratt 構文解析メソッドは
+    // ある程度 ll(1) 解析と似ている
+    //
+    pub fn parse_expression_pratt(
+        &mut self,
+        precedence: Precedence,
+    ) -> Result<Expression, ParseError> {
+        // prefix
+        let mut left_expression = match self.cur_token {
+            Token::Ident(_) => self.parse_ident_pratt()?,
+            Token::Int(_) => self.parse_int_pratt()?,
 
-    pub fn parse_int_pratt(&mut self) -> Result<Expression, ParseError> {
-        if let Token::Int(ref val) = self.cur_token {
-            let num = val.clone();
-            self.next_token();
-            Ok(Expression::Int(Int(num)))
-        } else {
-            return Err(ParseError::Symbol {
-                symbol: "[int](pratt)".to_string(),
-                current_token: self.cur_token.clone(),
-            });
-        }
-    }
+            Token::Bang => self.parse_prefix_expression_pratt()?,
+            Token::Minus => self.parse_prefix_expression_pratt()?,
 
-    pub fn parse_prefix_expression_pratt(&mut self) -> Result<Expression, ParseError> {
-        // NOTE: ll1 解析と同じようにやっても良い気がする
-        let prefix_operator = match self.cur_token {
-            Token::Bang => PrefixOperator::Bang,
-            Token::Minus => PrefixOperator::Minus,
-            _ => unreachable!("prefix"),
+            _ => {
+                return Err(ParseError::PrattPrefix {
+                    current_token: self.cur_token.clone(),
+                })
+            }
         };
 
-        self.next_token();
+        // NOTE: self.peek_token != Token::Semicolon という条件は果たしているのか？ -> 多分いらない
+        // while self.cur_token != Token::Semicolon && precedence < self.cur_precedence() {
+        while precedence < self.cur_precedence_infix() {
+            match self.cur_token {
+                Token::Plus
+                | Token::Minus
+                | Token::Asterisk
+                | Token::Slash
+                | Token::Lt
+                | Token::Gt
+                | Token::Eq
+                | Token::NotEq => {
+                    // self.next_token();
+                    left_expression = self.parse_infix_expression_pratt(left_expression)?;
+                }
+                _ => return Ok(left_expression),
+            }
+        }
+
+        Ok(left_expression)
+    }
+
+    // pratt parse for <Expression> -> [Ident]
+    pub fn parse_ident_pratt(&mut self) -> Result<Expression, ParseError> {
+        let ident = self.parse_ident_token()?;
+        Ok(Expression::Ident(ident))
+    }
+
+    // pratt parse for <Expression> -> [Int]
+    pub fn parse_int_pratt(&mut self) -> Result<Expression, ParseError> {
+        let int = self.parse_int_token()?;
+        Ok(Expression::Int(int))
+    }
+
+    // pratt parse for <Expression> -> <Prefix Operator> <Expression>
+    pub fn parse_prefix_expression_pratt(&mut self) -> Result<Expression, ParseError> {
+        // <Prefix Operator>
+        let precedence = self.cur_precedence_prefix();
+        let prefix_operator = self.parse_prefix_operator()?;
+
+        // <Expression>
+        let expression = self.parse_expression_pratt(precedence)?;
 
         Ok(Expression::PrefixExpression(
             prefix_operator,
-            Box::new(self.parse_expression_pratt(Precedence::Prefix)?),
+            Box::new(expression),
         ))
     }
 
+    // pratt parse for <Expression> -> <Expression> <Infix operator> <Expression>
     pub fn parse_infix_expression_pratt(
         &mut self,
         left_expression: Expression,
     ) -> Result<Expression, ParseError> {
-        // NOTE: ll1 解析と同じようにやっても良い気がする
-        let infix_operator = match self.cur_token {
-            Token::Plus => InfixOperator::Plus,
-            Token::Minus => InfixOperator::Minus,
-            Token::Asterisk => InfixOperator::Asterisk,
-            Token::Slash => InfixOperator::Slash,
-            Token::Lt => InfixOperator::Lt,
-            Token::Gt => InfixOperator::Gt,
-            Token::Eq => InfixOperator::Eq,
-            Token::NotEq => InfixOperator::NotEq,
-            _ => unreachable!("infix"),
-        };
+        // <Infix operator>
+        let precedence = self.cur_precedence_infix();
+        let infix_operator = self.parse_infix_operator()?;
 
-        let precedence = self.cur_precedence();
-        self.next_token();
+        // <Expression>
         let right_expression = self.parse_expression_pratt(precedence)?;
 
         Ok(Expression::InfixExpression(
@@ -354,7 +450,7 @@ impl fmt::Display for ParseError {
 mod tests {
     use super::*;
     use crate::ast::{Expression, Ident, InfixOperator, Int, PrefixOperator, Statement};
-    use crate::lexer::{self, Lexer};
+    use crate::lexer::Lexer;
 
     #[test]
     fn test_let_statements() {
