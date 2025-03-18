@@ -661,6 +661,8 @@ foobar;
         let prefix_tests = vec![
             ("!5;", PrefixOperator::Bang, Expression::Int(Int(5))),
             ("-15;", PrefixOperator::Minus, Expression::Int(Int(15))),
+            ("!true;", PrefixOperator::Bang, Expression::Boolean(Boolean::True)),
+            ("!false;", PrefixOperator::Bang, Expression::Boolean(Boolean::False)),
         ];
 
         for (input, expected_prefix_operator, expected_expression) in prefix_tests.iter() {
@@ -751,6 +753,24 @@ foobar;
                 Expression::Int(Int(5)),
                 InfixOperator::NotEq,
                 Expression::Int(Int(5)),
+            ),
+            (
+                "true == true;",
+                Expression::Boolean(Boolean::True),
+                InfixOperator::Eq,
+                Expression::Boolean(Boolean::True),
+            ),
+            (
+                "true != false;",
+                Expression::Boolean(Boolean::True),
+                InfixOperator::NotEq,
+                Expression::Boolean(Boolean::False),
+            ),
+            (
+                "false == false;",
+                Expression::Boolean(Boolean::False),
+                InfixOperator::Eq,
+                Expression::Boolean(Boolean::False),
             ),
         ];
 
