@@ -161,7 +161,7 @@ impl<'a> Parser<'a> {
         let expression = self.parse_expression_pratt(Precedence::Lowest)?;
 
         // pratt パーシングではその中で next_token を呼ばないのでここで呼んでおく
-        self.next_token();
+        // self.next_token();
         Ok(expression)
     }
 
@@ -170,7 +170,7 @@ impl<'a> Parser<'a> {
         precedence: Precedence,
     ) -> Result<Expression, ParseError> {
         // prefix
-        let left_expression = match self.cur_token {
+        let mut left_expression = match self.cur_token {
             Token::Ident(_) => self.parse_ident_pratt()?,
             Token::Int(_) => self.parse_int_pratt()?,
             Token::Bang => self.parse_prefix_expression_pratt()?,
@@ -183,10 +183,10 @@ impl<'a> Parser<'a> {
             }
         };
 
-        // NOTE: self.peek_token != Token::Semicolon という条件は果たしているのか？
-        while self.peek_token != Token::Semicolon && precedence < self.peek_precedence() {
-            // while precedence < self.peek_precedence() {
-            match self.peek_token {
+        // NOTE: self.peek_token != Token::Semicolon という条件は果たしているのか？ -> 多分いらない
+        // while self.cur_token != Token::Semicolon && precedence < self.cur_precedence() {
+        while precedence < self.cur_precedence() {
+            match self.cur_token {
                 Token::Plus
                 | Token::Minus
                 | Token::Asterisk
@@ -195,33 +195,14 @@ impl<'a> Parser<'a> {
                 | Token::Gt
                 | Token::Eq
                 | Token::NotEq => {
-                    self.next_token();
-                    return Ok(self.parse_infix_expression_pratt(left_expression)?);
+                    // self.next_token();
+                    left_expression = self.parse_infix_expression_pratt(left_expression)?;
                 }
                 _ => return Ok(left_expression),
             }
         }
 
         Ok(left_expression)
-
-        // // <Expression> -> [Ident] | [Int] の Director
-        // match self.cur_token {
-        //     // <Expression> -> [Ident] の Director
-        //     Token::Ident(_) => {
-        //         let ident = self.parse_ident_token()?;
-        //         Ok(Expression::Ident(ident))
-        //     }
-        //     // <Expression> -> [Int] の Director
-        //     Token::Int(_) => {
-        //         let int = self.parse_int_token()?;
-        //         Ok(Expression::Int(int))
-        //     }
-        //
-        //     _ => Err(ParseError::Symbol {
-        //         symbol: "<expression>".to_string(),
-        //         current_token: self.cur_token.clone(),
-        //     }),
-        // }
     }
 
     pub fn parse_token(&mut self, expected_token: Token) -> Result<(), ParseError> {
@@ -265,7 +246,7 @@ impl<'a> Parser<'a> {
     pub fn parse_ident_pratt(&mut self) -> Result<Expression, ParseError> {
         if let Token::Ident(ref val) = self.cur_token {
             let str = val.clone();
-            // self.next_token();
+            self.next_token();
             Ok(Expression::Ident(Ident(str)))
         } else {
             return Err(ParseError::Symbol {
@@ -278,7 +259,7 @@ impl<'a> Parser<'a> {
     pub fn parse_int_pratt(&mut self) -> Result<Expression, ParseError> {
         if let Token::Int(ref val) = self.cur_token {
             let num = val.clone();
-            // self.next_token();
+            self.next_token();
             Ok(Expression::Int(Int(num)))
         } else {
             return Err(ParseError::Symbol {
@@ -666,20 +647,20 @@ foobar;
     #[test]
     fn test_operator_precedence_parsing() {
         let tests = vec![
-            ("-a * b", "((-a) * b)"),
-            ("!-a", "(!(-a))"),
-            ("a + b + c", "((a + b) + c)"),
-            ("a + b - c", "((a + b) - c)"),
-            ("a * b * c", "((a * b) * c)"),
-            ("a * b / c", "((a * b) / c)"),
-            ("a + b / c", "(a + (b / c))"),
-            ("a + b * c + d / e - f", "(((a + (b * c)) + (d / e)) - f)"),
-            ("3 + 4; -6 * 5", "(3 + 4)((-5) * 5)"),
-            ("5 > 4 == 3 < 4", "((5 > 4) == (3 < 4))"),
-            ("5 < 4 != 3 > 4", "((5 < 4) != (3 > 4))"),
+            ("-a * b;", "((-a) * b);"),
+            ("!-a;", "(!(-a));"),
+            ("a + b + c;", "((a + b) + c);"),
+            ("a + b - c;", "((a + b) - c);"),
+            ("a * b * c;", "((a * b) * c);"),
+            ("a * b / c;", "((a * b) / c);"),
+            ("a + b / c;", "(a + (b / c));"),
+            ("a + b * c + d / e - f;", "(((a + (b * c)) + (d / e)) - f);"),
+            ("3 + 4; -6 * 5;", "(3 + 4);((-6) * 5);"),
+            ("5 > 4 == 3 < 4;", "((5 > 4) == (3 < 4));"),
+            ("5 < 4 != 3 > 4;", "((5 < 4) != (3 > 4));"),
             (
-                "3 + 4 * 5 == 3 * 1 + 4 * 5",
-                "((3 + (4 * 5)) == ((3 * 1) + (4 * 5)))",
+                "3 + 4 * 5 == 3 * 1 + 4 * 5;",
+                "((3 + (4 * 5)) == ((3 * 1) + (4 * 5)));",
             ),
         ];
 
