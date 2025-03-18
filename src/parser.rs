@@ -375,7 +375,7 @@ impl<'a> Parser<'a> {
 
             // 前置演算子
             // <Expression> -> <Prefix operator> <Expression>
-            Token::Bang | Token::Minus=> self.parse_prefix_expression_pratt()?,
+            Token::Bang | Token::Minus => self.parse_prefix_expression_pratt()?,
 
             _ => {
                 return Err(ParseError::PrattPrefix {
@@ -812,6 +812,10 @@ foobar;
                 "3 + 4 * 5 == 3 * 1 + 4 * 5;",
                 "((3 + (4 * 5)) == ((3 * 1) + (4 * 5)));",
             ),
+            ("true;", "true;"),
+            ("false;", "false;"),
+            ("3 > 5 == false;", "((3 > 5) == false);"),
+            ("3 < 5 == true;", "((3 < 5) == true);"),
         ];
 
         for (input, expected) in tests {
