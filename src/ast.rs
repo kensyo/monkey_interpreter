@@ -178,6 +178,7 @@
 //                   | <Prefix operator> <Expression>
 //                   | <Expression> <Infix operator> <Expression>
 //                   | <Boolean>
+//                   | ( <Expression> )
 // <Prefix operator> -> ! | -
 // <Infix operator> -> + | - | * | / | > | < | == | !=
 // <Boolean> -> true | false
@@ -202,6 +203,7 @@ pub enum Statement {
 //                   | <Prefix operator> <Expression>
 //                   | <Expression> <Infix operator> <Expression>
 //                   | <Boolean>
+//                   | ( <Expression> )
 #[derive(Debug, PartialEq)]
 pub enum Expression {
     Ident(Ident),
@@ -209,6 +211,7 @@ pub enum Expression {
     PrefixExpression(PrefixOperator, Box<Expression>),
     InfixExpression(Box<Expression>, InfixOperator, Box<Expression>),
     Boolean(Boolean),
+    GroupedExpression(Box<Expression>),
 }
 
 // <Prefix operator> -> ! | -
@@ -291,6 +294,9 @@ impl fmt::Display for Expression {
             }
             Expression::Boolean(boolean) => {
                 write!(f, "{}", boolean)
+            }
+            Expression::GroupedExpression(expression) => {
+                write!(f, "{}", expression)
             }
         }
     }

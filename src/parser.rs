@@ -91,7 +91,8 @@ impl<'a> Parser<'a> {
             | Token::Bang
             | Token::Minus
             | Token::True
-            | Token::False => {
+            | Token::False
+            | Token::LParen => {
                 // T({ <Statement> })
                 let mut statements = vec![];
                 // <Statement> の First
@@ -105,6 +106,7 @@ impl<'a> Parser<'a> {
                         | Token::Minus
                         | Token::True
                         | Token::False
+                        | Token::LParen
                 ) {
                     // T(<Statement>)
                     let statement = self.parse_statement()?;
@@ -167,7 +169,8 @@ impl<'a> Parser<'a> {
             | Token::Bang
             | Token::Minus
             | Token::True
-            | Token::False => {
+            | Token::False
+            | Token::LParen => {
                 // T(<Expression>)
                 let expression = self.parse_expression()?;
 
@@ -184,7 +187,7 @@ impl<'a> Parser<'a> {
         }
     }
 
-    // <Expression> -> [Ident] | [Int] | <Prefix Operator> <Expression> | <Expression> <Infix operator> <Expression> | <Boolean>
+    // <Expression> -> [Ident] | [Int] | <Prefix Operator> <Expression> | <Expression> <Infix operator> <Expression> | <Boolean> | ( <Expression> )
     pub fn parse_expression(&mut self) -> Result<Expression, ParseError> {
         let expression = self.parse_expression_pratt(Precedence::Lowest)?;
 
@@ -356,8 +359,8 @@ impl<'a> Parser<'a> {
 
     // 以下 pratt 構文解析用のメソッド
     // pratt 構文解析の返り値は全て Expression であることに注意
-    // 大元である parse_expression_pratt 以外の pratt 構文解析メソッドは
-    // ある程度 ll(1) 解析と似ている
+    // 中核である parse_expression_pratt, parse_infix_expression_pratt, parse_prefix_expression_pratt
+    // 以外の pratt 構文解析メソッドは ll(1) 解析と似ている(返り値がExpressionというだけ)
     //
     pub fn parse_expression_pratt(
         &mut self,
@@ -365,16 +368,20 @@ impl<'a> Parser<'a> {
     ) -> Result<Expression, ParseError> {
         // prefix
         let mut left_expression = match self.cur_token {
-            // オペランド
-            // <Expression> -> [Ident]
+            // NOTE: pratt パースはここの First たちが互いに素じゃないとうまくいかないだろう
+            // NOTE: ここには中値演算子以外の <Expression> -> "なんとか"
+            // を書く（それぞれに一つパース関数を対応させる）
+            // <Expression> -> [Ident] ... ( [Ident] の First )
             Token::Ident(_) => self.parse_ident_pratt()?,
-            // <Expression> -> [Int]
+            // <Expression> -> [Int] ... ( [Int] の First )
             Token::Int(_) => self.parse_int_pratt()?,
-            // <Expression> -> <Boolean>
+            // <Expression> -> <Boolean> ... ( <Boolean> の First )
             Token::True | Token::False => self.parse_boolean_pratt()?,
+            // <Expression> -> ( <Expression> ) ... ( ( <Expression> ) の First )
+            Token::LParen => self.parse_grouped_expression_pratt()?,
 
             // 前置演算子
-            // <Expression> -> <Prefix operator> <Expression>
+            // <Expression> -> <Prefix operator> <Expression> ... ( <Prefix operator> <Expression> の First )
             Token::Bang | Token::Minus => self.parse_prefix_expression_pratt()?,
 
             _ => {
@@ -413,21 +420,40 @@ impl<'a> Parser<'a> {
 
     // pratt parse for <Expression> -> [Ident]
     pub fn parse_ident_pratt(&mut self) -> Result<Expression, ParseError> {
+        // T([Ident])
         let ident = self.parse_ident_token()?;
         Ok(Expression::Ident(ident))
     }
 
     // pratt parse for <Expression> -> [Int]
     pub fn parse_int_pratt(&mut self) -> Result<Expression, ParseError> {
+        // T([Int])
         let int = self.parse_int_token()?;
         Ok(Expression::Int(int))
     }
 
     // pratt parse for <Expression> -> <Boolean>
     pub fn parse_boolean_pratt(&mut self) -> Result<Expression, ParseError> {
+        // T(<Boolean>)
         let boolean = self.parse_boolean()?;
         Ok(Expression::Boolean(boolean))
     }
+
+    // pratt parse for <Expression> -> ( <Expression> )
+    pub fn parse_grouped_expression_pratt(&mut self) -> Result<Expression, ParseError> {
+        // T( ( )
+        self.parse_token(Token::LParen)?;
+
+        // T(<Expression>)
+        let expression = self.parse_expression()?;
+
+        // T( ) )
+        self.parse_token(Token::RParen)?;
+
+        Ok(Expression::GroupedExpression(Box::new(expression)))
+    }
+
+    // 以下は (前置 | 中置) 演算子用の pratt パース関数
 
     // pratt parse for <Expression> -> <Prefix Operator> <Expression>
     pub fn parse_prefix_expression_pratt(&mut self) -> Result<Expression, ParseError> {
@@ -661,8 +687,16 @@ foobar;
         let prefix_tests = vec![
             ("!5;", PrefixOperator::Bang, Expression::Int(Int(5))),
             ("-15;", PrefixOperator::Minus, Expression::Int(Int(15))),
-            ("!true;", PrefixOperator::Bang, Expression::Boolean(Boolean::True)),
-            ("!false;", PrefixOperator::Bang, Expression::Boolean(Boolean::False)),
+            (
+                "!true;",
+                PrefixOperator::Bang,
+                Expression::Boolean(Boolean::True),
+            ),
+            (
+                "!false;",
+                PrefixOperator::Bang,
+                Expression::Boolean(Boolean::False),
+            ),
         ];
 
         for (input, expected_prefix_operator, expected_expression) in prefix_tests.iter() {
@@ -836,6 +870,10 @@ foobar;
             ("false;", "false;"),
             ("3 > 5 == false;", "((3 > 5) == false);"),
             ("3 < 5 == true;", "((3 < 5) == true);"),
+            ("1 + (2 + 3) + 4;", "((1 + (2 + 3)) + 4);"),
+            ("(5 + 5) * 2;", "((5 + 5) * 2);"),
+            ("2 / (5 + 5);", "(2 / (5 + 5));"),
+            ("!(true == false);", "(!(true == false));"),
         ];
 
         for (input, expected) in tests {
