@@ -343,10 +343,12 @@ impl<'a> Parser<'a> {
             }
         };
 
-        // NOTE: self.peek_token != Token::Semicolon という条件は果たしているのか？ -> 多分いらない
         // while self.cur_token != Token::Semicolon && precedence < self.cur_precedence() {
-        // self.cur_precedece() は今のトークンが中置演算子以外だとLowestを返すようになっているので、その場合
-        // while の中身は実行されなくなる
+        // NOTE1: self.peek_token != Token::Semicolon という条件は果たしているのか？ -> 多分いらない
+        // NOTE2: self.cur_precedece() は今のトークンが中置演算子以外だとLowestを
+        // 返すようになっているので、その場合 while の中身は実行されなくなる
+        // NOTE3: < を <= に変えると同じ優先度の演算子が右結合になる(と思われる)
+        //
         while precedence < self.cur_precedence_infix() {
             match self.cur_token {
                 // 中置演算子
