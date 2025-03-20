@@ -178,7 +178,7 @@
 //                   | <Prefix operator> <Expression>
 //                   | <Expression> <Infix operator> <Expression>
 //                   | <Boolean>
-//                   | ( <Expression> )
+//                   | '(' <Expression> ')'
 //                   | if '(' <Expression> ')' '{' <Block statement> '}' ( else '{' <Block statement> '}' | ε )
 // <Prefix operator> -> ! | -
 // <Infix operator> -> + | - | * | / | > | < | == | !=

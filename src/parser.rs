@@ -1,7 +1,8 @@
 use core::fmt;
 
 use crate::ast::{
-    Boolean, Expression, Ident, InfixOperator, Int, PrefixOperator, Program, Statement,
+    BlockStatement, Boolean, Expression, Ident, InfixOperator, Int, PrefixOperator, Program,
+    Statement,
 };
 use crate::lexer::Lexer;
 use crate::token::Token;
@@ -92,7 +93,8 @@ impl<'a> Parser<'a> {
             | Token::Minus
             | Token::True
             | Token::False
-            | Token::LParen => {
+            | Token::LParen
+            | Token::If => {
                 // T({ <Statement> })
                 let mut statements = vec![];
                 // <Statement> の First
@@ -107,6 +109,7 @@ impl<'a> Parser<'a> {
                         | Token::True
                         | Token::False
                         | Token::LParen
+                        | Token::If
                 ) {
                     // T(<Statement>)
                     let statement = self.parse_statement()?;
@@ -170,7 +173,8 @@ impl<'a> Parser<'a> {
             | Token::Minus
             | Token::True
             | Token::False
-            | Token::LParen => {
+            | Token::LParen
+            | Token::If => {
                 // T(<Expression>)
                 let expression = self.parse_expression()?;
 
@@ -187,7 +191,13 @@ impl<'a> Parser<'a> {
         }
     }
 
-    // <Expression> -> [Ident] | [Int] | <Prefix Operator> <Expression> | <Expression> <Infix operator> <Expression> | <Boolean> | ( <Expression> )
+    // <Expression> -> [Ident]
+    //                   | [Int]
+    //                   | <Prefix operator> <Expression>
+    //                   | <Expression> <Infix operator> <Expression>
+    //                   | <Boolean>
+    //                   | ( <Expression> )
+    //                   | if '(' <Expression> ')' '{' <Block statement> '}' ( else '{' <Block statement> '}' | ε )
     pub fn parse_expression(&mut self) -> Result<Expression, ParseError> {
         let expression = self.parse_expression_pratt(Precedence::Lowest)?;
 
@@ -319,6 +329,51 @@ impl<'a> Parser<'a> {
         }
     }
 
+    // <Block statement> -> { <Statement> }
+    pub fn parse_block_statement(&mut self) -> Result<BlockStatement, ParseError> {
+        match self.cur_token {
+            // <Block statement> -> { <Statement> }の Director
+            Token::Let
+            | Token::Return
+            | Token::Ident(_)
+            | Token::Int(_)
+            | Token::Bang
+            | Token::Minus
+            | Token::True
+            | Token::False
+            | Token::LParen
+            | Token::If => {
+                // T({ <Statement> })
+                let mut statements = vec![];
+                // <Statement> の First
+                while matches!(
+                    self.cur_token,
+                    Token::Let
+                        | Token::Return
+                        | Token::Ident(_)
+                        | Token::Int(_)
+                        | Token::Bang
+                        | Token::Minus
+                        | Token::True
+                        | Token::False
+                        | Token::LParen
+                        | Token::If
+                ) {
+                    // T(<Statement>)
+                    let statement = self.parse_statement()?;
+                    statements.push(statement);
+                }
+
+                Ok(BlockStatement::BlockStatement(statements))
+            }
+
+            _ => Err(ParseError::Symbol {
+                symbol: "<block statement>".to_string(),
+                current_token: self.cur_token.clone(),
+            }),
+        }
+    }
+
     pub fn parse_token(&mut self, expected_token: Token) -> Result<(), ParseError> {
         if self.cur_token.is_same_variant(&expected_token) {
             self.next_token();
@@ -382,6 +437,8 @@ impl<'a> Parser<'a> {
             Token::True | Token::False => self.parse_boolean_pratt()?,
             // <Expression> -> ( <Expression> ) ... ( ( <Expression> ) の First )
             Token::LParen => self.parse_grouped_expression_pratt()?,
+            // <Expression> -> if '(' <Expression> ')' '{' <Block statement> '}' ( else '{' <Block statement> '}' | ε ) ... ( if '(' <Expression> ')' '{' <Block statement> '}' ( else '{' <Block statement> '}' | ε ) の First)
+            Token::If => self.parse_if_expression_pratt()?,
 
             // 前置演算子
             // <Expression> -> <Prefix operator> <Expression> ... ( <Prefix operator> <Expression> の First )
@@ -442,18 +499,72 @@ impl<'a> Parser<'a> {
         Ok(Expression::Boolean(boolean))
     }
 
-    // pratt parse for <Expression> -> ( <Expression> )
+    // pratt parse for <Expression> -> '(' <Expression> ')'
     pub fn parse_grouped_expression_pratt(&mut self) -> Result<Expression, ParseError> {
-        // T( ( )
+        // T( '(' )
         self.parse_token(Token::LParen)?;
 
         // T(<Expression>)
         let expression = self.parse_expression()?;
 
-        // T( ) )
+        // T( ')' )
         self.parse_token(Token::RParen)?;
 
         Ok(Expression::GroupedExpression(Box::new(expression)))
+    }
+
+    // pratt parse for <Expression> -> if '(' <Expression> ')' '{' <Block statement> '}' ( else '{' <Block statement> '}' | ε )
+    pub fn parse_if_expression_pratt(&mut self) -> Result<Expression, ParseError> {
+        // T(if)
+        self.parse_token(Token::If)?;
+
+        // T( '(' )
+        self.parse_token(Token::LParen)?;
+
+        // T(<Expression>)
+        let condition = self.parse_expression()?;
+
+        // T( ')' )
+        self.parse_token(Token::RParen)?;
+
+        // T( '{' )
+        self.parse_token(Token::LBrace)?;
+
+        // T(<Block statement>)
+        let consequence = self.parse_block_statement()?;
+
+        // T( '}' )
+        self.parse_token(Token::RBrace)?;
+
+        // T( else '{' <Block statement> '}' | ε )
+        let mut alternative = None;
+        // else '{' <Block statement> の First
+        if matches!(self.cur_token, Token::Else) {
+            // T(else)
+            self.parse_token(Token::Else)?;
+
+            // T( '{' )
+            self.parse_token(Token::LBrace)?;
+
+            // T(<Block statement>)
+            let alt = self.parse_block_statement()?;
+
+            // T( '}' )
+            self.parse_token(Token::RBrace)?;
+
+            alternative = Some(alt);
+        }
+        // ε の First （これは空集合なので条件式は false ）
+        else if false {
+            // T(ε)
+            // 何もしない
+        };
+
+        Ok(Expression::IfExpression(
+            Box::new(condition),
+            consequence,
+            alternative,
+        ))
     }
 
     // 以下は (前置 | 中置) 演算子用の pratt パース関数
@@ -935,114 +1046,115 @@ foobar;
     // p.95
     #[test]
     fn test_if_expression() {
-        {
-            let input = "if (x < y) { x; };";
+        let input = "if (x < y) { x; };";
 
-            let mut l = Lexer::new(input);
-            let mut p = Parser::new(&mut l);
+        let mut l = Lexer::new(input);
+        let mut p = Parser::new(&mut l);
 
-            let program = p.parse_program().unwrap();
+        let program = p.parse_program().unwrap();
 
-            let statements = match program {
-                Program::Program(s_s) => {
-                    assert_eq!(s_s.len(), 1);
-                    s_s
-                }
-            };
+        let statements = match program {
+            Program::Program(s_s) => {
+                assert_eq!(s_s.len(), 1);
+                s_s
+            }
+        };
 
-            let statement = statements.into_iter().next().unwrap();
+        let statement = statements.into_iter().next().unwrap();
 
-            let expression = match statement {
-                Statement::Expression(expr) => expr,
-                _ => {
-                    panic!("{} is not expression statement", statement);
-                }
-            };
+        let expression = match statement {
+            Statement::Expression(expr) => expr,
+            _ => {
+                panic!("{} is not expression statement", statement);
+            }
+        };
 
-            let (condition, consequence, alternative) = match expression {
-                Expression::IfExpression(condition, consequence, alternative) => {
-                    (condition, consequence, alternative)
-                }
-                _ => {
-                    panic!("{} is not if expression", expression);
-                }
-            };
+        let (condition, consequence, alternative) = match expression {
+            Expression::IfExpression(condition, consequence, alternative) => {
+                (condition, consequence, alternative)
+            }
+            _ => {
+                panic!("{} is not if expression", expression);
+            }
+        };
 
-            assert_eq!(
-                *condition,
-                Expression::InfixExpression(
-                    Box::new(Expression::Ident(Ident("x".to_string()))),
-                    InfixOperator::Lt,
-                    Box::new(Expression::Ident(Ident("y".to_string())))
-                )
-            );
+        assert_eq!(
+            *condition,
+            Expression::InfixExpression(
+                Box::new(Expression::Ident(Ident("x".to_string()))),
+                InfixOperator::Lt,
+                Box::new(Expression::Ident(Ident("y".to_string())))
+            )
+        );
 
-            assert_eq!(
-                consequence,
-                BlockStatement::BlockStatement(vec![Statement::Expression(Expression::Ident(
-                    Ident("x".to_string())
-                ))])
-            );
+        assert_eq!(
+            consequence,
+            BlockStatement::BlockStatement(vec![Statement::Expression(Expression::Ident(Ident(
+                "x".to_string()
+            )))])
+        );
 
-            assert_eq!(alternative, None);
-        }
-        {
-            let input = "if (x < y) { x; } else { y; };";
+        assert_eq!(alternative, None);
+    }
 
-            let mut l = Lexer::new(input);
-            let mut p = Parser::new(&mut l);
+    // p.95
+    #[test]
+    fn test_if_else_expression() {
+        let input = "if (x < y) { x; } else { y; };";
 
-            let program = p.parse_program().unwrap();
+        let mut l = Lexer::new(input);
+        let mut p = Parser::new(&mut l);
 
-            let statements = match program {
-                Program::Program(s_s) => {
-                    assert_eq!(s_s.len(), 1);
-                    s_s
-                }
-            };
+        let program = p.parse_program().unwrap();
 
-            let statement = statements.into_iter().next().unwrap();
+        let statements = match program {
+            Program::Program(s_s) => {
+                assert_eq!(s_s.len(), 1);
+                s_s
+            }
+        };
 
-            let expression = match statement {
-                Statement::Expression(expr) => expr,
-                _ => {
-                    panic!("{} is not expression statement", statement);
-                }
-            };
+        let statement = statements.into_iter().next().unwrap();
 
-            let (condition, consequence, alternative) = match expression {
-                Expression::IfExpression(condition, consequence, alternative) => {
-                    (condition, consequence, alternative)
-                }
-                _ => {
-                    panic!("{} is not if expression", expression);
-                }
-            };
+        let expression = match statement {
+            Statement::Expression(expr) => expr,
+            _ => {
+                panic!("{} is not expression statement", statement);
+            }
+        };
 
-            assert_eq!(
-                *condition,
-                Expression::InfixExpression(
-                    Box::new(Expression::Ident(Ident("x".to_string()))),
-                    InfixOperator::Lt,
-                    Box::new(Expression::Ident(Ident("y".to_string())))
-                )
-            );
+        let (condition, consequence, alternative) = match expression {
+            Expression::IfExpression(condition, consequence, alternative) => {
+                (condition, consequence, alternative)
+            }
+            _ => {
+                panic!("{} is not if expression", expression);
+            }
+        };
 
-            assert_eq!(
-                consequence,
-                BlockStatement::BlockStatement(vec![Statement::Expression(Expression::Ident(
-                    Ident("x".to_string())
-                ))])
-            );
+        assert_eq!(
+            *condition,
+            Expression::InfixExpression(
+                Box::new(Expression::Ident(Ident("x".to_string()))),
+                InfixOperator::Lt,
+                Box::new(Expression::Ident(Ident("y".to_string())))
+            )
+        );
 
-            let alt = alternative.unwrap();
+        assert_eq!(
+            consequence,
+            BlockStatement::BlockStatement(vec![Statement::Expression(Expression::Ident(Ident(
+                "x".to_string()
+            )))])
+        );
 
-            assert_eq!(
-                alt,
-                BlockStatement::BlockStatement(vec![Statement::Expression(Expression::Ident(
-                    Ident("y".to_string())
-                ))])
-            );
-        }
+        let alt = alternative.unwrap();
+
+        assert_eq!(
+            alt,
+            BlockStatement::BlockStatement(vec![Statement::Expression(Expression::Ident(Ident(
+                "y".to_string()
+            )))])
+        );
     }
 }
