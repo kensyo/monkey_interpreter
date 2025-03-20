@@ -179,9 +179,11 @@
 //                   | <Expression> <Infix operator> <Expression>
 //                   | <Boolean>
 //                   | ( <Expression> )
+//                   | if '(' <Expression> ')' '{' <Block statement> '}' ( else '{' <Block statement> '}' | ε )
 // <Prefix operator> -> ! | -
 // <Infix operator> -> + | - | * | / | > | < | == | !=
 // <Boolean> -> true | false
+// <Block statement> -> { <Statement> }
 //
 
 // <Program> -> { <Statement> } EOF
@@ -204,6 +206,7 @@ pub enum Statement {
 //                   | <Expression> <Infix operator> <Expression>
 //                   | <Boolean>
 //                   | ( <Expression> )
+//                   | if '(' <Expression> ')' '{' <Block statement> '}' ( else '{' <Block statement> '}' | ε )
 #[derive(Debug, PartialEq)]
 pub enum Expression {
     Ident(Ident),
@@ -212,6 +215,7 @@ pub enum Expression {
     InfixExpression(Box<Expression>, InfixOperator, Box<Expression>),
     Boolean(Boolean),
     GroupedExpression(Box<Expression>),
+    IfExpression(Box<Expression>, BlockStatement, Option<BlockStatement>),
 }
 
 // <Prefix operator> -> ! | -
@@ -241,6 +245,12 @@ pub enum InfixOperator {
 pub enum Boolean {
     True,
     False,
+}
+
+// <Block statement> -> { <Statement> }
+#[derive(Debug, PartialEq)]
+pub enum BlockStatement {
+    BlockStatement(Vec<Statement>),
 }
 
 // 付随する値を持つトークン
@@ -298,6 +308,19 @@ impl fmt::Display for Expression {
             Expression::GroupedExpression(expression) => {
                 write!(f, "{}", expression)
             }
+            Expression::IfExpression(condition, consequence, alternative) => {
+                write!(f, "if")?;
+                write!(f, "{}", condition)?;
+                write!(f, " ")?;
+                write!(f, "{}", consequence)?;
+
+                if let Some(alt) = alternative {
+                    write!(f, "else")?;
+                    write!(f, "{}", alt)?;
+                }
+
+                Ok(())
+            }
         }
     }
 }
@@ -331,6 +354,19 @@ impl fmt::Display for Boolean {
         match self {
             Boolean::True => write!(f, "true"),
             Boolean::False => write!(f, "false"),
+        }
+    }
+}
+
+impl fmt::Display for BlockStatement {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            BlockStatement::BlockStatement(block_statement) => {
+                for statement in block_statement {
+                    write!(f, "{}", statement)?;
+                }
+                Ok(())
+            }
         }
     }
 }

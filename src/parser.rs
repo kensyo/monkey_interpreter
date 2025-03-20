@@ -358,7 +358,8 @@ impl<'a> Parser<'a> {
     }
 
     // 以下 pratt 構文解析用のメソッド
-    // pratt 構文解析の返り値は全て Expression であることに注意
+    // pratt 構文解析関数(これは <Expression> -> A1 | ... | An としたとき、n個作ることになるだろう)
+    // の返り値は全て Expression であることに注意
     // 中核である parse_expression_pratt, parse_infix_expression_pratt, parse_prefix_expression_pratt
     // 以外の pratt 構文解析メソッドは ll(1) 解析と似ている(返り値がExpressionというだけ)
     //
@@ -368,9 +369,11 @@ impl<'a> Parser<'a> {
     ) -> Result<Expression, ParseError> {
         // prefix
         let mut left_expression = match self.cur_token {
-            // NOTE: pratt パースはここの First たちが互いに素じゃないとうまくいかないだろう
-            // NOTE: ここには中値演算子以外の <Expression> -> "なんとか"
-            // を書く（それぞれに一つパース関数を対応させる）
+            // NOTE: cur_token だけを使う場合、pratt パースはここの First たちが互いに素じゃないと
+            // うまくいかないだろう(peek_token まで使って場合分けができればいけるとは思う)
+            // NOTE: ここには中値演算子以外の <Expression> -> "なんとか" の First とそれに対応する
+            // pratt 構文解析関数 を書く
+
             // <Expression> -> [Ident] ... ( [Ident] の First )
             Token::Ident(_) => self.parse_ident_pratt()?,
             // <Expression> -> [Int] ... ( [Int] の First )
@@ -529,7 +532,9 @@ impl fmt::Display for ParseError {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::ast::{Boolean, Expression, Ident, InfixOperator, Int, PrefixOperator, Statement};
+    use crate::ast::{
+        BlockStatement, Boolean, Expression, Ident, InfixOperator, Int, PrefixOperator, Statement,
+    };
     use crate::lexer::Lexer;
 
     #[test]
@@ -924,6 +929,120 @@ foobar;
             };
 
             assert_eq!(boolean, expected);
+        }
+    }
+
+    // p.95
+    #[test]
+    fn test_if_expression() {
+        {
+            let input = "if (x < y) { x; };";
+
+            let mut l = Lexer::new(input);
+            let mut p = Parser::new(&mut l);
+
+            let program = p.parse_program().unwrap();
+
+            let statements = match program {
+                Program::Program(s_s) => {
+                    assert_eq!(s_s.len(), 1);
+                    s_s
+                }
+            };
+
+            let statement = statements.into_iter().next().unwrap();
+
+            let expression = match statement {
+                Statement::Expression(expr) => expr,
+                _ => {
+                    panic!("{} is not expression statement", statement);
+                }
+            };
+
+            let (condition, consequence, alternative) = match expression {
+                Expression::IfExpression(condition, consequence, alternative) => {
+                    (condition, consequence, alternative)
+                }
+                _ => {
+                    panic!("{} is not if expression", expression);
+                }
+            };
+
+            assert_eq!(
+                *condition,
+                Expression::InfixExpression(
+                    Box::new(Expression::Ident(Ident("x".to_string()))),
+                    InfixOperator::Lt,
+                    Box::new(Expression::Ident(Ident("y".to_string())))
+                )
+            );
+
+            assert_eq!(
+                consequence,
+                BlockStatement::BlockStatement(vec![Statement::Expression(Expression::Ident(
+                    Ident("x".to_string())
+                ))])
+            );
+
+            assert_eq!(alternative, None);
+        }
+        {
+            let input = "if (x < y) { x; } else { y; };";
+
+            let mut l = Lexer::new(input);
+            let mut p = Parser::new(&mut l);
+
+            let program = p.parse_program().unwrap();
+
+            let statements = match program {
+                Program::Program(s_s) => {
+                    assert_eq!(s_s.len(), 1);
+                    s_s
+                }
+            };
+
+            let statement = statements.into_iter().next().unwrap();
+
+            let expression = match statement {
+                Statement::Expression(expr) => expr,
+                _ => {
+                    panic!("{} is not expression statement", statement);
+                }
+            };
+
+            let (condition, consequence, alternative) = match expression {
+                Expression::IfExpression(condition, consequence, alternative) => {
+                    (condition, consequence, alternative)
+                }
+                _ => {
+                    panic!("{} is not if expression", expression);
+                }
+            };
+
+            assert_eq!(
+                *condition,
+                Expression::InfixExpression(
+                    Box::new(Expression::Ident(Ident("x".to_string()))),
+                    InfixOperator::Lt,
+                    Box::new(Expression::Ident(Ident("y".to_string())))
+                )
+            );
+
+            assert_eq!(
+                consequence,
+                BlockStatement::BlockStatement(vec![Statement::Expression(Expression::Ident(
+                    Ident("x".to_string())
+                ))])
+            );
+
+            let alt = alternative.unwrap();
+
+            assert_eq!(
+                alt,
+                BlockStatement::BlockStatement(vec![Statement::Expression(Expression::Ident(
+                    Ident("y".to_string())
+                ))])
+            );
         }
     }
 }
