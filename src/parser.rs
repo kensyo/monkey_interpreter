@@ -197,7 +197,7 @@ impl<'a> Parser<'a> {
     //                   | <Expression> <Infix operator> <Expression>
     //                   | <Boolean>
     //                   | ( <Expression> )
-    //                   | if '(' <Expression> ')' '{' <Block statement> '}' ( else '{' <Block statement> '}' | ε )
+    //                   | if '(' <Expression> ')' <Block statement> ( else <Block statement> | ε )
     pub fn parse_expression(&mut self) -> Result<Expression, ParseError> {
         let expression = self.parse_expression_pratt(Precedence::Lowest)?;
 
@@ -329,20 +329,14 @@ impl<'a> Parser<'a> {
         }
     }
 
-    // <Block statement> -> { <Statement> }
+    // <Block statement> -> '{' { <Statement> } '}'
     pub fn parse_block_statement(&mut self) -> Result<BlockStatement, ParseError> {
         match self.cur_token {
-            // <Block statement> -> { <Statement> }の Director
-            Token::Let
-            | Token::Return
-            | Token::Ident(_)
-            | Token::Int(_)
-            | Token::Bang
-            | Token::Minus
-            | Token::True
-            | Token::False
-            | Token::LParen
-            | Token::If => {
+            // <Block statement> -> '{' { <Statement> } '}' の Director
+            Token::LBrace => {
+                // T( '{' )
+                self.parse_token(Token::LBrace)?;
+
                 // T({ <Statement> })
                 let mut statements = vec![];
                 // <Statement> の First
@@ -363,6 +357,9 @@ impl<'a> Parser<'a> {
                     let statement = self.parse_statement()?;
                     statements.push(statement);
                 }
+
+                // T( '}' )
+                self.parse_token(Token::RBrace)?;
 
                 Ok(BlockStatement::BlockStatement(statements))
             }
@@ -513,7 +510,7 @@ impl<'a> Parser<'a> {
         Ok(Expression::GroupedExpression(Box::new(expression)))
     }
 
-    // pratt parse for <Expression> -> if '(' <Expression> ')' '{' <Block statement> '}' ( else '{' <Block statement> '}' | ε )
+    // pratt parse for <Expression> -> if '(' <Expression> ')' <Block statement> ( else <Block statement> | ε )
     pub fn parse_if_expression_pratt(&mut self) -> Result<Expression, ParseError> {
         // T(if)
         self.parse_token(Token::If)?;
@@ -527,30 +524,18 @@ impl<'a> Parser<'a> {
         // T( ')' )
         self.parse_token(Token::RParen)?;
 
-        // T( '{' )
-        self.parse_token(Token::LBrace)?;
-
         // T(<Block statement>)
         let consequence = self.parse_block_statement()?;
 
-        // T( '}' )
-        self.parse_token(Token::RBrace)?;
-
-        // T( else '{' <Block statement> '}' | ε )
+        // T( else <Block statement> | ε )
         let mut alternative = None;
-        // else '{' <Block statement> の First
+        // else <Block statement> の First
         if matches!(self.cur_token, Token::Else) {
             // T(else)
             self.parse_token(Token::Else)?;
 
-            // T( '{' )
-            self.parse_token(Token::LBrace)?;
-
             // T(<Block statement>)
             let alt = self.parse_block_statement()?;
-
-            // T( '}' )
-            self.parse_token(Token::RBrace)?;
 
             alternative = Some(alt);
         }

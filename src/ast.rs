@@ -179,11 +179,11 @@
 //                   | <Expression> <Infix operator> <Expression>
 //                   | <Boolean>
 //                   | '(' <Expression> ')'
-//                   | if '(' <Expression> ')' '{' <Block statement> '}' ( else '{' <Block statement> '}' | ε )
+//                   | if '(' <Expression> ')' <Block statement> ( else <Block statement> | ε )
 // <Prefix operator> -> ! | -
 // <Infix operator> -> + | - | * | / | > | < | == | !=
 // <Boolean> -> true | false
-// <Block statement> -> { <Statement> }
+// <Block statement> -> '{' { <Statement> } '}'
 //
 
 // <Program> -> { <Statement> } EOF
@@ -206,7 +206,7 @@ pub enum Statement {
 //                   | <Expression> <Infix operator> <Expression>
 //                   | <Boolean>
 //                   | ( <Expression> )
-//                   | if '(' <Expression> ')' '{' <Block statement> '}' ( else '{' <Block statement> '}' | ε )
+//                   | if '(' <Expression> ')' <Block statement> ( else <Block statement> | ε )
 #[derive(Debug, PartialEq)]
 pub enum Expression {
     Ident(Ident),
@@ -247,7 +247,7 @@ pub enum Boolean {
     False,
 }
 
-// <Block statement> -> { <Statement> }
+// <Block statement> -> '{' { <Statement> } '}'
 #[derive(Debug, PartialEq)]
 pub enum BlockStatement {
     BlockStatement(Vec<Statement>),
