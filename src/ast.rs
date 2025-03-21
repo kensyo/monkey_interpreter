@@ -180,10 +180,12 @@
 //                   | <Boolean>
 //                   | '(' <Expression> ')'
 //                   | if '(' <Expression> ')' <Block statement> ( else <Block statement> | ε )
+//                   | fn <Parameters> <Block statement>
 // <Prefix operator> -> ! | -
 // <Infix operator> -> + | - | * | / | > | < | == | !=
 // <Boolean> -> true | false
 // <Block statement> -> '{' { <Statement> } '}'
+// <Parameters> -> '(' ( [ident] { , [ident] } | ε ) ')'
 //
 
 // <Program> -> { <Statement> } EOF
@@ -207,6 +209,7 @@ pub enum Statement {
 //                   | <Boolean>
 //                   | ( <Expression> )
 //                   | if '(' <Expression> ')' <Block statement> ( else <Block statement> | ε )
+//                   | fn <Parameters> <Block statement>
 #[derive(Debug, PartialEq)]
 pub enum Expression {
     Ident(Ident),
@@ -216,6 +219,7 @@ pub enum Expression {
     Boolean(Boolean),
     GroupedExpression(Box<Expression>),
     IfExpression(Box<Expression>, BlockStatement, Option<BlockStatement>),
+    FunctionLiteral(Parameters, BlockStatement),
 }
 
 // <Prefix operator> -> ! | -
@@ -251,6 +255,12 @@ pub enum Boolean {
 #[derive(Debug, PartialEq)]
 pub enum BlockStatement {
     BlockStatement(Vec<Statement>),
+}
+
+// <Parameters> -> '(' ( [ident] { , [ident] } | ε ) ')'
+#[derive(Debug, PartialEq)]
+pub enum Parameters {
+    Parameters(Vec<Ident>),
 }
 
 // 付随する値を持つトークン
@@ -321,6 +331,9 @@ impl fmt::Display for Expression {
 
                 Ok(())
             }
+            Expression::FunctionLiteral(parameters, body) => {
+                write!(f, "fn{} {}", parameters, body)
+            }
         }
     }
 }
@@ -366,6 +379,24 @@ impl fmt::Display for BlockStatement {
                     write!(f, "{}", statement)?;
                 }
                 Ok(())
+            }
+        }
+    }
+}
+
+impl fmt::Display for Parameters {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Parameters::Parameters(parameters) => {
+                write!(
+                    f,
+                    "({})",
+                    parameters
+                        .iter()
+                        .map(|ident| ident.to_string())
+                        .collect::<Vec<_>>()
+                        .join(", ")
+                )
             }
         }
     }

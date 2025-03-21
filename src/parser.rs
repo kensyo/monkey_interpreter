@@ -1,8 +1,8 @@
 use core::fmt;
 
 use crate::ast::{
-    BlockStatement, Boolean, Expression, Ident, InfixOperator, Int, PrefixOperator, Program,
-    Statement,
+    BlockStatement, Boolean, Expression, Ident, InfixOperator, Int, Parameters, PrefixOperator,
+    Program, Statement,
 };
 use crate::lexer::Lexer;
 use crate::token::Token;
@@ -94,7 +94,8 @@ impl<'a> Parser<'a> {
             | Token::True
             | Token::False
             | Token::LParen
-            | Token::If => {
+            | Token::If
+            | Token::Function => {
                 // T({ <Statement> })
                 let mut statements = vec![];
                 // <Statement> の First
@@ -110,6 +111,7 @@ impl<'a> Parser<'a> {
                         | Token::False
                         | Token::LParen
                         | Token::If
+                        | Token::Function
                 ) {
                     // T(<Statement>)
                     let statement = self.parse_statement()?;
@@ -174,7 +176,8 @@ impl<'a> Parser<'a> {
             | Token::True
             | Token::False
             | Token::LParen
-            | Token::If => {
+            | Token::If
+            | Token::Function => {
                 // T(<Expression>)
                 let expression = self.parse_expression()?;
 
@@ -198,6 +201,7 @@ impl<'a> Parser<'a> {
     //                   | <Boolean>
     //                   | ( <Expression> )
     //                   | if '(' <Expression> ')' <Block statement> ( else <Block statement> | ε )
+    //                   | fn <Parameters> <Block statement>
     pub fn parse_expression(&mut self) -> Result<Expression, ParseError> {
         let expression = self.parse_expression_pratt(Precedence::Lowest)?;
 
@@ -371,6 +375,51 @@ impl<'a> Parser<'a> {
         }
     }
 
+    // <Parameters> -> '(' ( [ident] { , [ident] } | ε ) ')'
+    pub fn parse_parameters(&mut self) -> Result<Parameters, ParseError> {
+        match self.cur_token {
+            // <Parameters> -> '(' ( [ident] { , [ident] } | ε ) ')' の Director
+            Token::LParen => {
+                // T('(')
+                self.parse_token(Token::LParen)?;
+
+                // T( [ident] { , [ident] } | ε )
+                let mut parameters = vec![];
+                //  [ident] { , [ident] } | ε の First
+                if matches!(self.cur_token, Token::Ident(_)) {
+                    // T([ident])
+                    let ident = self.parse_ident_token()?;
+                    parameters.push(ident);
+
+                    // T({ , [ident] })
+                    // , [ident] の First
+                    while matches!(self.cur_token, Token::Comma) {
+                        // T(,)
+                        self.parse_token(Token::Comma)?;
+
+                        // T([ident])
+                        let ident = self.parse_ident_token()?;
+                        parameters.push(ident);
+                    }
+                }
+                // ε の First は空なので false にしておく
+                else if false {
+                    // T(ε)
+                    // 何もしない
+                }
+
+                // T( ')' )
+                self.parse_token(Token::RParen)?;
+
+                Ok(Parameters::Parameters(parameters))
+            }
+            _ => Err(ParseError::Symbol {
+                symbol: "<parameters>".to_string(),
+                current_token: self.cur_token.clone(),
+            }),
+        }
+    }
+
     pub fn parse_token(&mut self, expected_token: Token) -> Result<(), ParseError> {
         if self.cur_token.is_same_variant(&expected_token) {
             self.next_token();
@@ -432,10 +481,12 @@ impl<'a> Parser<'a> {
             Token::Int(_) => self.parse_int_pratt()?,
             // <Expression> -> <Boolean> ... ( <Boolean> の First )
             Token::True | Token::False => self.parse_boolean_pratt()?,
-            // <Expression> -> ( <Expression> ) ... ( ( <Expression> ) の First )
+            // <Expression> -> '(' <Expression> ')' ... ( '(' <Expression> ')' の First )
             Token::LParen => self.parse_grouped_expression_pratt()?,
-            // <Expression> -> if '(' <Expression> ')' '{' <Block statement> '}' ( else '{' <Block statement> '}' | ε ) ... ( if '(' <Expression> ')' '{' <Block statement> '}' ( else '{' <Block statement> '}' | ε ) の First)
+            // <Expression> -> if '(' <Expression> ')' <Block statement> ( else <Block statement> | ε ) ... ( if '(' <Expression> ')' <Block statement> ( else <Block statement> | ε ) の First)
             Token::If => self.parse_if_expression_pratt()?,
+            // <Expression> -> fn <Parameters> <Block statement> ... (  の First )
+            Token::Function => self.parse_function_literal_partt()?,
 
             // 前置演算子
             // <Expression> -> <Prefix operator> <Expression> ... ( <Prefix operator> <Expression> の First )
@@ -552,6 +603,20 @@ impl<'a> Parser<'a> {
         ))
     }
 
+    // pratt parse for <Expression> -> fn <Parameters> <Block statement>
+    pub fn parse_function_literal_partt(&mut self) -> Result<Expression, ParseError> {
+        // T(fn)
+        self.parse_token(Token::Function)?;
+
+        // T(<Parameters>)
+        let parameters = self.parse_parameters()?;
+
+        // T(<Block statement>)
+        let block_statement = self.parse_block_statement()?;
+
+        Ok(Expression::FunctionLiteral(parameters, block_statement))
+    }
+
     // 以下は (前置 | 中置) 演算子用の pratt パース関数
 
     // pratt parse for <Expression> -> <Prefix Operator> <Expression>
@@ -629,7 +694,8 @@ impl fmt::Display for ParseError {
 mod tests {
     use super::*;
     use crate::ast::{
-        BlockStatement, Boolean, Expression, Ident, InfixOperator, Int, PrefixOperator, Statement,
+        BlockStatement, Boolean, Expression, Ident, InfixOperator, Int, Parameters, PrefixOperator,
+        Statement,
     };
     use crate::lexer::Lexer;
 
@@ -1141,5 +1207,107 @@ foobar;
                 "y".to_string()
             )))])
         );
+    }
+
+    // p.101
+    #[test]
+    fn test_function_literal_parsing() {
+        let input = "fn(x, y) { x + y; };";
+
+        let mut l = Lexer::new(input);
+        let mut p = Parser::new(&mut l);
+
+        let program = p.parse_program().unwrap();
+
+        let statements = match program {
+            Program::Program(s_s) => {
+                assert_eq!(s_s.len(), 1);
+                s_s
+            }
+        };
+
+        let statement = statements.into_iter().next().unwrap();
+
+        let expression = match statement {
+            Statement::Expression(expr) => expr,
+            _ => {
+                panic!("{} is not expression statement", statement);
+            }
+        };
+
+        let (parameters, body) = match expression {
+            Expression::FunctionLiteral(parameters, body) => (parameters, body),
+            _ => {
+                panic!("{} is not function literal expression", expression);
+            }
+        };
+
+        assert_eq!(
+            parameters,
+            Parameters::Parameters(vec![Ident("x".to_string()), Ident("y".to_string())])
+        );
+
+        assert_eq!(
+            body,
+            BlockStatement::BlockStatement(vec![Statement::Expression(
+                Expression::InfixExpression(
+                    Box::new(Expression::Ident(Ident("x".to_string()))),
+                    InfixOperator::Plus,
+                    Box::new(Expression::Ident(Ident("y".to_string())))
+                )
+            )])
+        );
+    }
+
+    // p.104
+    #[test]
+    fn test_function_parameter_parsing() {
+        let tests = vec![
+            ("fn() {};", Parameters::Parameters(vec![])),
+            (
+                "fn(x) {};",
+                Parameters::Parameters(vec![Ident("x".to_string())]),
+            ),
+            (
+                "fn(x, y, z) {};",
+                Parameters::Parameters(vec![
+                    Ident("x".to_string()),
+                    Ident("y".to_string()),
+                    Ident("z".to_string()),
+                ]),
+            ),
+        ];
+
+        for (input, expected_params) in tests {
+            let mut l = Lexer::new(input);
+            let mut p = Parser::new(&mut l);
+
+            let program = p.parse_program().unwrap();
+
+            let statements = match program {
+                Program::Program(s_s) => {
+                    assert_eq!(s_s.len(), 1);
+                    s_s
+                }
+            };
+
+            let statement = statements.into_iter().next().unwrap();
+
+            let expression = match statement {
+                Statement::Expression(expr) => expr,
+                _ => {
+                    panic!("{} is not expression statement", statement);
+                }
+            };
+
+            let (parameters, _body) = match expression {
+                Expression::FunctionLiteral(parameters, body) => (parameters, body),
+                _ => {
+                    panic!("{} is not function literal expression", expression);
+                }
+            };
+
+            assert_eq!(parameters, expected_params);
+        }
     }
 }
