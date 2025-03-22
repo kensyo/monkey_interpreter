@@ -181,11 +181,13 @@
 //                   | '(' <Expression> ')'
 //                   | if '(' <Expression> ')' <Block statement> ( else <Block statement> | ε )
 //                   | fn <Parameters> <Block statement>
+//                   | <Expression> '(' <Comma separated expressions> ')'
 // <Prefix operator> -> ! | -
 // <Infix operator> -> + | - | * | / | > | < | == | !=
 // <Boolean> -> true | false
 // <Block statement> -> '{' { <Statement> } '}'
 // <Parameters> -> '(' ( [ident] { , [ident] } | ε ) ')'
+// <Comma separated expressions> -> ( <Expression> { , <Expression> } | ε )
 //
 
 // <Program> -> { <Statement> } EOF
@@ -210,6 +212,7 @@ pub enum Statement {
 //                   | ( <Expression> )
 //                   | if '(' <Expression> ')' <Block statement> ( else <Block statement> | ε )
 //                   | fn <Parameters> <Block statement>
+//                   | <Expression> '(' <Comma separated expressions> ')'
 #[derive(Debug, PartialEq)]
 pub enum Expression {
     Ident(Ident),
@@ -220,6 +223,7 @@ pub enum Expression {
     GroupedExpression(Box<Expression>),
     IfExpression(Box<Expression>, BlockStatement, Option<BlockStatement>),
     FunctionLiteral(Parameters, BlockStatement),
+    CallExpression(Box<Expression>, CommaSeparatedExpression),
 }
 
 // <Prefix operator> -> ! | -
@@ -261,6 +265,12 @@ pub enum BlockStatement {
 #[derive(Debug, PartialEq)]
 pub enum Parameters {
     Parameters(Vec<Ident>),
+}
+
+// <Comma separated expressions> -> ( <Expression> { , <Expression> } | ε )
+#[derive(Debug, PartialEq)]
+pub enum CommaSeparatedExpression {
+    CommaSeparatedExpression(Vec<Expression>),
 }
 
 // 付随する値を持つトークン
@@ -334,6 +344,9 @@ impl fmt::Display for Expression {
             Expression::FunctionLiteral(parameters, body) => {
                 write!(f, "fn{} {}", parameters, body)
             }
+            Expression::CallExpression(function, arguments) => {
+                write!(f, "{}({})", function, arguments)
+            }
         }
     }
 }
@@ -394,6 +407,23 @@ impl fmt::Display for Parameters {
                     parameters
                         .iter()
                         .map(|ident| ident.to_string())
+                        .collect::<Vec<_>>()
+                        .join(", ")
+                )
+            }
+        }
+    }
+}
+
+impl fmt::Display for CommaSeparatedExpression {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            CommaSeparatedExpression::CommaSeparatedExpression(cse) => {
+                write!(
+                    f,
+                    "{}",
+                    cse.iter()
+                        .map(|expression| expression.to_string())
                         .collect::<Vec<_>>()
                         .join(", ")
                 )

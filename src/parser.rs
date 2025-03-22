@@ -1,8 +1,8 @@
 use core::fmt;
 
 use crate::ast::{
-    BlockStatement, Boolean, Expression, Ident, InfixOperator, Int, Parameters, PrefixOperator,
-    Program, Statement,
+    BlockStatement, Boolean, CommaSeparatedExpression, Expression, Ident, InfixOperator, Int,
+    Parameters, PrefixOperator, Program, Statement,
 };
 use crate::lexer::Lexer;
 use crate::token::Token;
@@ -202,6 +202,7 @@ impl<'a> Parser<'a> {
     //                   | ( <Expression> )
     //                   | if '(' <Expression> ')' <Block statement> ( else <Block statement> | ε )
     //                   | fn <Parameters> <Block statement>
+    //                   | <Expression> '(' <Comma separated expression> ')'
     pub fn parse_expression(&mut self) -> Result<Expression, ParseError> {
         let expression = self.parse_expression_pratt(Precedence::Lowest)?;
 
@@ -385,7 +386,7 @@ impl<'a> Parser<'a> {
 
                 // T( [ident] { , [ident] } | ε )
                 let mut parameters = vec![];
-                //  [ident] { , [ident] } | ε の First
+                //  [ident] { , [ident] } の First
                 if matches!(self.cur_token, Token::Ident(_)) {
                     // T([ident])
                     let ident = self.parse_ident_token()?;
@@ -415,6 +416,69 @@ impl<'a> Parser<'a> {
             }
             _ => Err(ParseError::Symbol {
                 symbol: "<parameters>".to_string(),
+                current_token: self.cur_token.clone(),
+            }),
+        }
+    }
+
+    // <Comma separated expression> -> ( <Expression> { , <Expression> } | ε )
+    pub fn parse_comma_separated_expressions(
+        &mut self,
+    ) -> Result<CommaSeparatedExpression, ParseError> {
+        match self.cur_token {
+            // <Comma separated expression> -> ( <Expression> { , <Expression> } | ε ) の Director
+            Token::True
+            | Token::False
+            | Token::LParen
+            | Token::Function
+            | Token::If
+            | Token::Int(_)
+            | Token::Minus
+            | Token::Bang
+            | Token::Ident(_)
+            | Token::RParen => {
+                // T( <Expression> { , <Expression> } | ε )
+                let mut arguments = vec![];
+                // <Expression> { , <Expression> } の First
+                if matches!(
+                    self.cur_token,
+                    Token::True
+                        | Token::False
+                        | Token::LParen
+                        | Token::Function
+                        | Token::If
+                        | Token::Int(_)
+                        | Token::Minus
+                        | Token::Bang
+                        | Token::Ident(_)
+                ) {
+                    // T(<Expression>)
+                    let expression = self.parse_expression()?;
+                    arguments.push(expression);
+
+                    // T({ , <Expression> })
+                    // , <Expression> の First
+                    while matches!(self.cur_token, Token::Comma) {
+                        // T(,)
+                        self.parse_token(Token::Comma)?;
+
+                        // T(<Expression>)
+                        let expression = self.parse_expression()?;
+                        arguments.push(expression);
+                    }
+                }
+                // ε の First は空なので false にしておく
+                else if false {
+                    // T(ε)
+                    // 何もしない
+                }
+
+                Ok(CommaSeparatedExpression::CommaSeparatedExpression(
+                    arguments,
+                ))
+            }
+            _ => Err(ParseError::Symbol {
+                symbol: "<comma separated expressions>".to_string(),
                 current_token: self.cur_token.clone(),
             }),
         }
@@ -1308,6 +1372,125 @@ foobar;
             };
 
             assert_eq!(parameters, expected_params);
+        }
+    }
+
+    // p.106
+    #[test]
+    fn test_call_expression_parsing() {
+        let input = "add(1, 2 * 3, 4 + 5);";
+
+        let mut l = Lexer::new(input);
+        let mut p = Parser::new(&mut l);
+
+        let program = p.parse_program().unwrap();
+
+        let statements = match program {
+            Program::Program(s_s) => {
+                assert_eq!(s_s.len(), 1);
+                s_s
+            }
+        };
+
+        let statement = statements.into_iter().next().unwrap();
+
+        let expression = match statement {
+            Statement::Expression(expr) => expr,
+            _ => {
+                panic!("{} is not expression statement", statement);
+            }
+        };
+
+        let (function, arguments) = match expression {
+            Expression::CallExpression(function, aruguments) => (function, aruguments),
+            _ => {
+                panic!("{} is not call expression", expression);
+            }
+        };
+
+        assert_eq!(*function, Expression::Ident(Ident("add".to_string())));
+        assert_eq!(
+            arguments,
+            CommaSeparatedExpression::CommaSeparatedExpression(vec![
+                Expression::Int(Int(1)),
+                Expression::InfixExpression(
+                    Box::new(Expression::Int(Int(2))),
+                    InfixOperator::Asterisk,
+                    Box::new(Expression::Int(Int(3)))
+                ),
+                Expression::InfixExpression(
+                    Box::new(Expression::Int(Int(4))),
+                    InfixOperator::Plus,
+                    Box::new(Expression::Int(Int(5)))
+                ),
+            ])
+        );
+    }
+
+    // p.106
+    #[test]
+    fn test_call_expression_parameter_parsing() {
+        let tests = vec![
+            (
+                "add();",
+                Expression::Ident(Ident("add".to_string())),
+                CommaSeparatedExpression::CommaSeparatedExpression(vec![]),
+            ),
+            (
+                "add(1);",
+                Expression::Ident(Ident("add".to_string())),
+                CommaSeparatedExpression::CommaSeparatedExpression(vec![Expression::Int(Int(1))]),
+            ),
+            (
+                "add(1, 2 * 3, 4 + 5);",
+                Expression::Ident(Ident("add".to_string())),
+                CommaSeparatedExpression::CommaSeparatedExpression(vec![
+                    Expression::Int(Int(1)),
+                    Expression::InfixExpression(
+                        Box::new(Expression::Int(Int(2))),
+                        InfixOperator::Asterisk,
+                        Box::new(Expression::Int(Int(3))),
+                    ),
+                    Expression::InfixExpression(
+                        Box::new(Expression::Int(Int(4))),
+                        InfixOperator::Plus,
+                        Box::new(Expression::Int(Int(5))),
+                    ),
+                ]),
+            ),
+        ];
+
+        for (input, expected_function, expected_aruguments) in tests.iter() {
+            let mut l = Lexer::new(input);
+            let mut p = Parser::new(&mut l);
+
+            let program = p.parse_program().unwrap();
+
+            let statements = match program {
+                Program::Program(s_s) => {
+                    assert_eq!(s_s.len(), 1);
+                    s_s
+                }
+            };
+
+            let statement = statements.into_iter().next().unwrap();
+
+            let expression = match statement {
+                Statement::Expression(expr) => expr,
+                _ => {
+                    panic!("{} is not expression statement", statement);
+                }
+            };
+
+            let (function, arguments) = match expression {
+                Expression::CallExpression(function, aruguments) => (function, aruguments),
+                _ => {
+                    panic!("{} is not call expression", expression);
+                }
+            };
+
+            assert_eq!(*function, *expected_function);
+            assert_eq!(arguments, *expected_aruguments);
         }
     }
 }
