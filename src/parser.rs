@@ -63,6 +63,7 @@ impl<'a> Parser<'a> {
             Token::Lt | Token::Gt => Precedence::LessGreater,
             Token::Plus | Token::Minus => Precedence::Sum,
             Token::Slash | Token::Asterisk => Precedence::Product,
+            Token::LParen => Precedence::Call,
             _ => Precedence::Lowest,
         }
     }
@@ -536,7 +537,8 @@ impl<'a> Parser<'a> {
         let mut left_expression = match self.cur_token {
             // NOTE: cur_token だけを使う場合、pratt パースはここの First たちが互いに素じゃないと
             // うまくいかないだろう(peek_token まで使って場合分けができればいけるとは思う)
-            // NOTE: ここには中値演算子以外の <Expression> -> "なんとか" の First とそれに対応する
+            // NOTE: ここには <Expression> -> <Expression> ...  という形でない規則
+            // (LHS が <Expression> でかつ、RHS の最初の記号が<Expression> でないもの) の First とそれに対応する
             // pratt 構文解析関数 を書く
 
             // <Expression> -> [Ident] ... ( [Ident] の First )
@@ -582,6 +584,11 @@ impl<'a> Parser<'a> {
                 | Token::Eq
                 | Token::NotEq => {
                     left_expression = self.parse_infix_expression_pratt(left_expression)?;
+                }
+                // <Expression> -> <Expression> ( <Comma separated expressions> )
+                // NOTE: ( は中値演算子ではないが、しょうがなく優先度を設定して解析できるようにするのがコツ
+                Token::LParen => {
+                    left_expression = self.parse_call_expression_pratt(left_expression)?;
                 }
                 _ => return Ok(left_expression),
             }
@@ -679,6 +686,26 @@ impl<'a> Parser<'a> {
         let block_statement = self.parse_block_statement()?;
 
         Ok(Expression::FunctionLiteral(parameters, block_statement))
+    }
+
+    // pratt parse for <Expression> -> <Expression> ( <Comma separated expressions> )
+    pub fn parse_call_expression_pratt(
+        &mut self,
+        left_expression: Expression,
+    ) -> Result<Expression, ParseError> {
+        // T( '(' )
+        self.parse_token(Token::LParen)?;
+
+        // T(<Comma separated expressions>)
+        let arguments = self.parse_comma_separated_expressions()?;
+
+        // T( ')' )
+        self.parse_token(Token::RParen)?;
+
+        Ok(Expression::CallExpression(
+            Box::new(left_expression),
+            arguments,
+        ))
     }
 
     // 以下は (前置 | 中置) 演算子用の pratt パース関数
@@ -1106,6 +1133,15 @@ foobar;
             ("2 / (5 + 5);", "(2 / (5 + 5));"),
             ("!(true == false);", "(!(true == false));"),
             ("(5);", "5;"),
+            ("a + add(b * c) + d;", "((a + add((b * c))) + d);"),
+            (
+                "add(a, b, 1, 2 * 3, 4 + 5, add(6, 7 * 8));",
+                "add(a, b, 1, (2 * 3), (4 + 5), add(6, (7 * 8)));",
+            ),
+            (
+                "add(a + b + c * d/ f + g);",
+                "add((((a + b) + ((c * d) / f)) + g));",
+            ),
         ];
 
         for (input, expected) in tests {
