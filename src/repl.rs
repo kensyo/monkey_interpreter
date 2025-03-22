@@ -1,9 +1,24 @@
 use std::io::{self, Write};
 
 use crate::lexer::Lexer;
-use crate::token::Token;
+use crate::parser::{ParseError, Parser};
 
 const PROMPT: &str = ">> ";
+
+const MONKEY_FACE: &str = r#"
+   .--,       .--,
+  ( (  \.---./  ) )
+   '.__/o   o\__.'
+      {=  ^  =}
+       >  -  <
+      /       \
+     //       \\
+    //|   .   |\\
+    "'\       /'"_.-~^`'-.
+       \  _  /--'         `
+     ___)( )(___
+    (((__) (__)))    ヒヒッ
+"#;
 
 pub fn start() {
     let stdin = io::stdin();
@@ -28,14 +43,21 @@ pub fn start() {
         }
 
         let mut lexer = Lexer::new(line);
+        let mut parser = Parser::new(&mut lexer);
 
-        // トークンを出力
-        loop {
-            let token = lexer.next_token();
-            if token == Token::EOF {
-                break;
+        let program = match parser.parse_program() {
+            Ok(program) => program,
+            Err(e) => {
+                print_parse_error(&e);
+                continue;
             }
-            println!("{:?}", token);
-        }
+        };
+
+        println!("{}", program.to_string());
     }
+}
+
+fn print_parse_error(e: &ParseError) {
+    println!("{}", MONKEY_FACE);
+    println!("{}", e);
 }
