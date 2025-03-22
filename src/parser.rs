@@ -792,73 +792,86 @@ mod tests {
 
     #[test]
     fn test_let_statements() {
-        let input = r#"
-let x = x;
-let y = y;
-let foobar = foobar;
-"#;
-
-        let mut l = Lexer::new(input);
-        let mut p = Parser::new(&mut l);
-
-        // parse_program がエラーを返していたらパニックして終了
-        let program = p.parse_program().unwrap();
-
-        let actual_statements = match program {
-            Program::Program(s_s) => {
-                assert_eq!(s_s.len(), 3);
-                s_s
-            }
-        };
-
-        // Expression は一旦適当
-        let expected_statements = vec![
-            Statement::Let(
+        let tests = vec![
+            (
+                "let x = 5;",
                 Ident("x".to_string()),
-                Expression::Ident(Ident("x".to_string())),
+                Expression::Int(Int(5)),
             ),
-            Statement::Let(
+            (
+                "let y = true;",
                 Ident("y".to_string()),
-                Expression::Ident(Ident("y".to_string())),
+                Expression::Boolean(Boolean::True),
             ),
-            Statement::Let(
+            (
+                "let foobar = y;",
                 Ident("foobar".to_string()),
-                Expression::Ident(Ident("foobar".to_string())),
+                Expression::Ident(Ident("y".to_string())),
             ),
         ];
 
-        assert_eq!(actual_statements, expected_statements);
+        for (input, expected_ident, expected_expression) in tests.iter() {
+            let mut l = Lexer::new(input);
+            let mut p = Parser::new(&mut l);
+
+            let program = p.parse_program().unwrap();
+
+            let statements = match program {
+                Program::Program(s_s) => {
+                    assert_eq!(s_s.len(), 1);
+                    s_s
+                }
+            };
+
+            let statement = statements.into_iter().next().unwrap();
+
+            let (ident, expression) = match statement {
+                Statement::Let(ident, expression) => (ident, expression),
+                _ => {
+                    panic!("{} is not let statement", statement);
+                }
+            };
+
+            assert_eq!(ident, *expected_ident);
+            assert_eq!(expression, *expected_expression);
+        }
     }
 
     #[test]
     fn test_return_statements() {
-        let input = r#"
-return 5;
-return 10;
-return 993322;
-"#;
-
-        let mut l = Lexer::new(input);
-        let mut p = Parser::new(&mut l);
-
-        // parse_program がエラーを返していたらパニックして終了
-        let program = p.parse_program().unwrap();
-
-        let actual_statements = match program {
-            Program::Program(s_s) => {
-                assert_eq!(s_s.len(), 3);
-                s_s
-            }
-        };
-
-        // Expression は一旦適当
-        let expected_statements = vec![
-            Statement::Return(Expression::Int(Int(5))),
-            Statement::Return(Expression::Int(Int(10))),
-            Statement::Return(Expression::Int(Int(993322))),
+        let tests = vec![
+            ("return 5;", Expression::Int(Int(5))),
+            ("return true;", Expression::Boolean(Boolean::True)),
+            (
+                "return foobar;",
+                Expression::Ident(Ident("foobar".to_string())),
+            ),
         ];
 
-        assert_eq!(actual_statements, expected_statements);
+        for (input, expected_expression) in tests.iter() {
+            let mut l = Lexer::new(input);
+            let mut p = Parser::new(&mut l);
+
+            let program = p.parse_program().unwrap();
+
+            let statements = match program {
+                Program::Program(s_s) => {
+                    assert_eq!(s_s.len(), 1);
+                    s_s
+                }
+            };
+
+            let statement = statements.into_iter().next().unwrap();
+
+            let expression = match statement {
+                Statement::Return(expression) => expression,
+                _ => {
+                    panic!("{} is not return statement", statement);
+                }
+            };
+
+            assert_eq!(expression, *expected_expression);
+        }
     }
 
     // p.56
